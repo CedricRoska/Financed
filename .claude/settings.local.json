@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 \"c:/Dev/Financed/_bmad/scripts/resolve_customization.py\" --skill \"c:/Dev/Financed/.claude/skills/bmad-agent-dev\" --key agent)",
+      "Bash(python \"c:/Dev/Financed/_bmad/scripts/resolve_customization.py\" --skill \"c:/Dev/Financed/.claude/skills/bmad-agent-dev\" --key agent)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"c:/Dev/Financed/_bmad/scripts/resolve_customization.py\" --skill \"c:/Dev/Financed/.claude/skills/bmad-agent-dev\" --key agent)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"c:/Dev/Financed/_bmad/scripts/resolve_customization.py\" --skill \"c:/Dev/Financed/.claude/skills/bmad-agent-pm\" --key agent)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"c:/Dev/Financed/_bmad/scripts/resolve_customization.py\" --skill \"c:/Dev/Financed/.claude/skills/bmad-create-prd\" --key workflow)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"c:/Dev/Financed/_bmad/scripts/resolve_customization.py\" --skill \"c:/Dev/Financed/.claude/skills/bmad-create-prd\" --key workflow.on_complete)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"c:/Dev/Financed/_bmad/scripts/resolve_customization.py\" --skill \"c:/Dev/Financed/.claude/skills/bmad-quick-dev\" --key workflow)",
+      "Bash(git init *)",
+      "Bash(git check-ignore *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)"
+    ]
+  }
+}
