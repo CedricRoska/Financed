@@ -13,6 +13,25 @@ const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
   month: 'short',
 })
 
+type AnnotationLite = {
+  category: string | null
+  pro_perso: 'pro' | 'perso' | null
+  expected_refund_from: string | null
+}
+
+function pickAnnotation(raw: unknown): AnnotationLite | null {
+  if (!raw) return null
+  if (Array.isArray(raw)) return (raw[0] ?? null) as AnnotationLite | null
+  return raw as AnnotationLite
+}
+
+function isUnreconciled(annotation: AnnotationLite | null): boolean {
+  if (!annotation) return true
+  if (annotation.expected_refund_from && annotation.expected_refund_from.trim() !== '') return true
+  if (!annotation.category || annotation.category.trim() === '') return true
+  return false
+}
+
 export default async function MonthDetailPage({
   params,
 }: {
@@ -37,7 +56,6 @@ export default async function MonthDetailPage({
     redirect('/dashboard')
   }
 
-  // Fenêtre du mois : [YYYY-MM-01, premier jour du mois suivant)
   const startDate = `${monthSlug}-01`
   const nextMonth = parsed.month === 12 ? 1 : parsed.month + 1
   const nextYear = parsed.month === 12 ? parsed.year + 1 : parsed.year
@@ -45,15 +63,30 @@ export default async function MonthDetailPage({
 
   const { data: transactions } = await supabase
     .from('transactions')
-    .select('id, op_date, amount, raw_label')
+    .select(
+      'id, op_date, amount, raw_label, transaction_annotations(category, pro_perso, expected_refund_from)',
+    )
     .eq('account_id', accountId)
     .gte('op_date', startDate)
     .lt('op_date', endDate)
     .order('op_date', { ascending: false })
     .order('id', { ascending: false })
 
-  const total = (transactions ?? []).reduce((sum, t) => sum + Number(t.amount), 0)
+  const enriched = (transactions ?? []).map((t) => {
+    const annotation = pickAnnotation(t.transaction_annotations)
+    return {
+      id: t.id,
+      op_date: t.op_date,
+      amount: Number(t.amount),
+      raw_label: t.raw_label,
+      annotation,
+      unreconciled: isUnreconciled(annotation),
+    }
+  })
+
+  const total = enriched.reduce((sum, t) => sum + t.amount, 0)
   const isPositive = total >= 0
+  const unreconciledCount = enriched.filter((t) => t.unreconciled).length
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-12">
@@ -80,6 +113,13 @@ export default async function MonthDetailPage({
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-neutral-900">
             {formatMonthLabelFR(monthSlug)}
           </h1>
+          {unreconciledCount > 0 ? (
+            <p className="mt-1 text-sm font-medium text-amber-700">
+              {unreconciledCount} non lettrée{unreconciledCount > 1 ? 's' : ''}
+            </p>
+          ) : (
+            <p className="mt-1 text-sm font-medium text-emerald-700">Tout lettré ✅</p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span
@@ -99,7 +139,7 @@ export default async function MonthDetailPage({
       </section>
 
       <section className="mt-10">
-        {!transactions || transactions.length === 0 ? (
+        {enriched.length === 0 ? (
           <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50/50 px-6 py-12 text-center">
             <p className="text-sm text-neutral-500">Aucune transaction pour ce mois.</p>
           </div>
@@ -110,22 +150,62 @@ export default async function MonthDetailPage({
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">Date</th>
                   <th className="px-4 py-3 text-left font-medium">Libellé</th>
+                  <th className="px-4 py-3 text-left font-medium">Catégorie</th>
                   <th className="px-4 py-3 text-right font-medium">Montant</th>
+                  <th className="px-4 py-3 text-left font-medium">Statut</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 bg-white">
-                {transactions.map((t) => (
+                {enriched.map((t) => (
                   <tr key={t.id}>
                     <td className="px-4 py-3 text-neutral-600">
                       {dateFormatter.format(new Date(t.op_date))}
                     </td>
-                    <td className="px-4 py-3 text-neutral-900">{t.raw_label}</td>
+                    <td className="px-4 py-3 text-neutral-900">
+                      <Link
+                        href={`/accounts/${accountId}/transactions/${t.id}/edit`}
+                        className="hover:underline"
+                      >
+                        {t.raw_label}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-neutral-700">
+                      {t.annotation?.category ? (
+                        <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700 ring-1 ring-neutral-200">
+                          {t.annotation.category}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-neutral-400">—</span>
+                      )}
+                      {t.annotation?.pro_perso ? (
+                        <span
+                          className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${
+                            t.annotation.pro_perso === 'pro'
+                              ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                              : 'bg-blue-50 text-blue-700 ring-blue-200'
+                          }`}
+                        >
+                          {t.annotation.pro_perso === 'pro' ? 'Pro' : 'Perso'}
+                        </span>
+                      ) : null}
+                    </td>
                     <td
                       className={`px-4 py-3 text-right tabular-nums ${
-                        Number(t.amount) >= 0 ? 'text-emerald-700' : 'text-neutral-900'
+                        t.amount >= 0 ? 'text-emerald-700' : 'text-neutral-900'
                       }`}
                     >
-                      {amountFormatter.format(Number(t.amount))}
+                      {amountFormatter.format(t.amount)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {t.unreconciled ? (
+                        <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+                          Non lettrée
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+                          Lettrée
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

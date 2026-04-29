@@ -8,6 +8,24 @@ const amountFormatter = new Intl.NumberFormat('fr-FR', {
   currency: 'EUR',
 })
 
+type AnnotationLite = {
+  category: string | null
+  expected_refund_from: string | null
+}
+
+function pickAnnotation(raw: unknown): AnnotationLite | null {
+  if (!raw) return null
+  if (Array.isArray(raw)) return (raw[0] ?? null) as AnnotationLite | null
+  return raw as AnnotationLite
+}
+
+function isUnreconciled(annotation: AnnotationLite | null): boolean {
+  if (!annotation) return true
+  if (annotation.expected_refund_from && annotation.expected_refund_from.trim() !== '') return true
+  if (!annotation.category || annotation.category.trim() === '') return true
+  return false
+}
+
 export default async function AccountDetailPage({
   params,
 }: {
@@ -28,11 +46,22 @@ export default async function AccountDetailPage({
 
   const { data: transactions } = await supabase
     .from('transactions')
-    .select('op_date, amount')
+    .select(
+      'op_date, amount, transaction_annotations(category, expected_refund_from)',
+    )
     .eq('account_id', id)
     .order('op_date', { ascending: false })
 
-  const months = groupTransactionsByMonth(transactions ?? [])
+  const enriched = (transactions ?? []).map((t) => {
+    const annotation = pickAnnotation(t.transaction_annotations)
+    return {
+      op_date: t.op_date,
+      amount: Number(t.amount),
+      hasAnnotation: !isUnreconciled(annotation),
+    }
+  })
+
+  const months = groupTransactionsByMonth(enriched)
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-12">
@@ -111,7 +140,12 @@ export default async function AccountDetailPage({
                                 {m.unreconciled} non lettrée{m.unreconciled > 1 ? 's' : ''}
                               </span>
                             </>
-                          ) : null}
+                          ) : (
+                            <>
+                              {' · '}
+                              <span className="font-medium text-emerald-700">Tout lettré</span>
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>
