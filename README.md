@@ -32,11 +32,18 @@ cp .env.example .env.local
 # Édite .env.local avec tes credentials Supabase
 # (Settings → API dans le dashboard Supabase)
 
-# 4. Lancer en dev
+# 4. Configurer Supabase Auth (étape obligatoire en V1)
+# Dashboard Supabase → Authentication → Sign In / Up → Email
+# → décoche "Confirm email" pour permettre signup → connection immédiate.
+# (Sera réactivé à l'ouverture publique V2 avec un flow callback dédié.)
+
+# 5. Lancer en dev
 npm run dev
 ```
 
 L'application est accessible sur http://localhost:3000.
+
+À la première utilisation, tu seras redirigé vers `/login`. Crée un compte via `/signup` puis connecte-toi.
 
 ## Scripts
 

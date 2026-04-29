@@ -6,13 +6,13 @@ Goals identified during quick-dev intent clarification but deferred to subsequen
 
 Source intent: *"Setup Next.js + Supabase + Auth + schéma initial des tables transactions et transaction_annotations avec RLS"*
 
-### Goal 2 — Auth flow
+### Goal 2 — Auth flow (split en 2 specs)
 
-**Scope** : Pages `/login`, `/signup`, `/logout`, intégration Supabase Auth (email/password), session persistante, redirect post-login vers dashboard, protection des routes authentifiées via middleware Next.js.
+**Goal 2a — Auth core** *(implémenté dans `spec-auth-core.md`)* : signup, login, logout, session, middleware. **FRs couverts** : FR1, FR2, FR3, FR5.
 
-**Dépendances** : Goal 1 (foundation) doit être shipé d'abord.
+**Goal 2b — Password reset** *(différé)* : pages `/forgot-password` et `/reset-password`, callback email, flow Supabase reset. **FR couvert** : FR4. À implémenter quand un parcours de récupération devient nécessaire (typiquement à l'ouverture publique V2).
 
-**FRs couverts** : FR1, FR2, FR3, FR4, FR5
+**Dépendances** : Goal 1 (foundation) shipé. Goal 2b dépend de Goal 2a.
 
 **NFRs touchés** : NFR9 (RLS), NFR10 (service_role server-side only)
 
