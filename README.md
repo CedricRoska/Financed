@@ -37,13 +37,34 @@ cp .env.example .env.local
 # → décoche "Confirm email" pour permettre signup → connection immédiate.
 # (Sera réactivé à l'ouverture publique V2 avec un flow callback dédié.)
 
-# 5. Lancer en dev
+# 5. Appliquer la migration de schéma initiale
+# Voir section "Database setup" ci-dessous.
+
+# 6. Lancer en dev
 npm run dev
 ```
 
 L'application est accessible sur http://localhost:3000.
 
 À la première utilisation, tu seras redirigé vers `/login`. Crée un compte via `/signup` puis connecte-toi.
+
+## Database setup
+
+V1 n'utilise pas le CLI Supabase. Les migrations sont appliquées **manuellement** via le SQL editor du dashboard, et les types TypeScript sont maintenus à la main dans [`lib/supabase/types.ts`](lib/supabase/types.ts).
+
+### Appliquer une migration
+
+1. Ouvrir le dashboard Supabase → ton projet → **SQL editor**
+2. Cliquer **New query**
+3. Coller intégralement le contenu du fichier de migration concerné (par exemple [`supabase/migrations/0001_init_schema.sql`](supabase/migrations/0001_init_schema.sql))
+4. Cliquer **Run** (ou Ctrl+Enter)
+5. Vérifier dans **Database → Tables** que les tables attendues apparaissent avec le cadenas RLS
+
+Les migrations sont **idempotentes** (`CREATE TABLE IF NOT EXISTS` + `DROP POLICY IF EXISTS` partout) — les ré-appliquer en cas d'incident est safe.
+
+### Évolution de schéma
+
+À chaque nouvelle migration : ajouter un fichier numéroté dans `supabase/migrations/` (par ex. `0002_add_categories.sql`), l'appliquer via le dashboard, et mettre à jour [`lib/supabase/types.ts`](lib/supabase/types.ts) pour rester synchronisé avec le schéma réel.
 
 ## Scripts
 
@@ -68,7 +89,7 @@ L'application est accessible sur http://localhost:3000.
 │   └── supabase/           # Couche Supabase isolée (NFR23)
 │       ├── client.ts       # Client browser
 │       ├── server.ts       # Clients server + service_role
-│       └── types.ts        # Types DB (régénérés en Goal 3)
+│       └── types.ts        # Types DB (synchro manuelle avec migrations)
 ├── _bmad-output/           # Artefacts BMAD (planning + implementation specs)
 └── _bmad/                  # Configuration BMAD module
 ```
@@ -81,10 +102,10 @@ L'application est accessible sur http://localhost:3000.
 
 ## Roadmap
 
-- [x] **Foundation** — Next.js + Supabase wiring (ce repo, état actuel)
-- [ ] **Auth** — pages signup/login, sessions Supabase
-- [ ] **Schéma initial** — tables `transactions`, `transaction_annotations`, RLS, types générés
-- [ ] **Import CSV** — drag & drop, parsing Banque Populaire, sanity check
+- [x] **Foundation** — Next.js + Supabase wiring
+- [x] **Auth** — pages signup/login, sessions Supabase, middleware protection
+- [x] **Schéma initial** — tables `accounts`, `transactions`, `transaction_annotations`, `audit_log` + RLS
+- [ ] **Import CSV** — drag & drop, parsing Banque Populaire, sanity check, dédup hash
 - [ ] **Vue mensuelle** — cards, compteur non-lettrées, score tricolore
 - [ ] **Lettrage** — réconciliation 1-1 et 1-N, remboursement attendu persistant
 - [ ] **V1.5** — copilote LLM saupoudré (chatbot, dashboards, classification)
