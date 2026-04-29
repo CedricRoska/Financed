@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { createClient as createBaseClient } from '@supabase/supabase-js'
+import { createClient as createBaseClient, type SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import type { Database } from './types'
 
@@ -12,9 +12,13 @@ import type { Database } from './types'
  * Le module `server-only` fait échouer le build si ce fichier est importé
  * depuis un client component.
  */
-export async function createClient() {
+export async function createClient(): Promise<SupabaseClient<Database>> {
   const cookieStore = await cookies()
 
+  // NOTE: cast vers SupabaseClient<Database>. @supabase/ssr 0.6.1 a un bug de
+  // typage générique qui résout Schema en `never`, ce qui rend `from()` non typé.
+  // Le cast force la résolution correcte. À retirer dès qu'une version corrigée
+  // sera disponible.
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -35,7 +39,7 @@ export async function createClient() {
         },
       },
     },
-  )
+  ) as unknown as SupabaseClient<Database>
 }
 
 /**

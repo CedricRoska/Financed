@@ -4,6 +4,11 @@
  * IMPORTANT : à chaque évolution de schéma, mettre à jour CE fichier en parallèle
  * du fichier de migration. Pas de génération automatique en V1 (décision auteur,
  * pas de CLI Supabase).
+ *
+ * Note : les UPDATE sur `transactions` et `audit_log` sont rejetés au niveau RLS
+ * (NFR13, append-only). Le typage TS reste permissif côté Update : c'est la base
+ * de données qui fait foi, pas le compilateur — cohérent avec la doctrine
+ * "the app reflects, doesn't lie".
  */
 
 export type Database = {
@@ -31,7 +36,15 @@ export type Database = {
           is_hybrid?: boolean
           created_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: 'accounts_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
       }
       transactions: {
         Row: {
@@ -54,8 +67,32 @@ export type Database = {
           hash: string
           imported_at?: string
         }
-        Update: never
-        Relationships: []
+        Update: {
+          id?: string
+          user_id?: string
+          account_id?: string
+          op_date?: string
+          amount?: number
+          raw_label?: string
+          hash?: string
+          imported_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'transactions_account_id_fkey'
+            columns: ['account_id']
+            isOneToOne: false
+            referencedRelation: 'accounts'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'transactions_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
       }
       transaction_annotations: {
         Row: {
@@ -94,7 +131,22 @@ export type Database = {
           created_at?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: 'transaction_annotations_transaction_id_fkey'
+            columns: ['transaction_id']
+            isOneToOne: true
+            referencedRelation: 'transactions'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'transaction_annotations_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
       }
       audit_log: {
         Row: {
@@ -111,13 +163,35 @@ export type Database = {
           metadata?: Record<string, unknown> | null
           created_at?: string
         }
-        Update: never
-        Relationships: []
+        Update: {
+          id?: string
+          user_id?: string | null
+          action?: string
+          metadata?: Record<string, unknown> | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'audit_log_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
-    Views: Record<string, never>
-    Functions: Record<string, never>
-    Enums: Record<string, never>
-    CompositeTypes: Record<string, never>
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
