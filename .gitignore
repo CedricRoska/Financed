@@ -33,6 +33,9 @@ yarn-error.log*
 .env.local
 .env*.local
 
+# Données utilisateur réelles (jamais commit)
+data/
+
 # IDE
 .vscode/
 .idea/
