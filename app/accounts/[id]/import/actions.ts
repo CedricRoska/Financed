@@ -30,11 +30,18 @@ async function ensureAccountOwnership(accountId: string) {
   return { supabase, user }
 }
 
+/** Limite la taille de l'URL PostgREST sur `IN (...)` : 64 chars par hash × 100 = 6.4 Ko. */
+const HASH_CHUNK_SIZE = 100
+
 /**
  * Server Action : query la DB pour identifier les transactions déjà présentes
  * et marquer chaque transaction comme `new` ou `duplicate`.
  *
  * Couvre FR15 (détection de doublons par hash) côté DB.
+ *
+ * Le query est chunké : un `.in('hash', [...])` avec ~260 hashes produit une
+ * URL de ~17 Ko qui dépasse la limite par défaut de PostgREST. On découpe en
+ * lots de 100 hashes max pour rester sous la limite.
  */
 export async function previewImport(
   transactions: ParsedTransaction[],
@@ -47,19 +54,25 @@ export async function previewImport(
   const { supabase, user } = await ensureAccountOwnership(accountId)
 
   const hashes = transactions.map((t) => t.hash)
+  const existingHashes = new Set<string>()
 
-  const { data: existing, error } = await supabase
-    .from('transactions')
-    .select('hash')
-    .eq('user_id', user.id)
-    .eq('account_id', accountId)
-    .in('hash', hashes)
+  for (let i = 0; i < hashes.length; i += HASH_CHUNK_SIZE) {
+    const chunk = hashes.slice(i, i + HASH_CHUNK_SIZE)
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('hash')
+      .eq('user_id', user.id)
+      .eq('account_id', accountId)
+      .in('hash', chunk)
 
-  if (error) {
-    throw new Error(`Erreur lors de la vérification des doublons : ${error.message}`)
+    if (error) {
+      throw new Error(`Erreur lors de la vérification des doublons : ${error.message}`)
+    }
+
+    for (const row of data ?? []) {
+      existingHashes.add(row.hash)
+    }
   }
-
-  const existingHashes = new Set((existing ?? []).map((row) => row.hash))
 
   const previewed: PreviewedTransaction[] = transactions.map((t) => ({
     ...t,

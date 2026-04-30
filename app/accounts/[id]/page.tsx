@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { groupTransactionsByMonth } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 
@@ -46,9 +49,7 @@ export default async function AccountDetailPage({
 
   const { data: transactions } = await supabase
     .from('transactions')
-    .select(
-      'op_date, amount, transaction_annotations(category, expected_refund_from)',
-    )
+    .select('op_date, amount, transaction_annotations(category, expected_refund_from)')
     .eq('account_id', id)
     .order('op_date', { ascending: false })
 
@@ -64,105 +65,98 @@ export default async function AccountDetailPage({
   const months = groupTransactionsByMonth(enriched)
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-12">
-      <header className="flex items-center justify-between">
+    <div className="flex min-h-screen flex-col">
+      <header className="flex items-center justify-between border-b px-6 py-4">
         <Link
           href="/dashboard"
-          className="text-sm text-neutral-500 transition hover:text-neutral-700"
+          className="text-sm text-muted-foreground transition hover:text-foreground"
         >
           ← Retour au dashboard
         </Link>
         <form action="/logout" method="POST">
-          <button
-            type="submit"
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50"
-          >
+          <Button type="submit" variant="outline" size="sm">
             Se déconnecter
-          </button>
+          </Button>
         </form>
       </header>
 
-      <section className="mt-10 flex items-start justify-between gap-4">
+      <section className="flex flex-wrap items-end justify-between gap-4 border-b px-6 py-6">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">
-              {account.name}
-            </h1>
+            <h1 className="text-3xl font-semibold tracking-tight">{account.name}</h1>
             {account.is_hybrid ? (
-              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
                 Pro / Perso
-              </span>
+              </Badge>
             ) : null}
           </div>
         </div>
 
-        <Link
-          href={`/accounts/${account.id}/import`}
-          className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800"
-        >
+        <Link href={`/accounts/${account.id}/import`} className={buttonVariants()}>
           Importer un relevé
         </Link>
       </section>
 
-      <section className="mt-10">
-        {months.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50/50 px-6 py-12 text-center">
-            <p className="text-base text-neutral-700">Aucune transaction pour ce compte.</p>
-            <p className="mt-1 text-sm text-neutral-500">
-              Importe ton premier relevé pour démarrer.
-            </p>
-          </div>
-        ) : (
-          <ul className="grid gap-3">
-            {months.map((m) => {
+      <main className="flex-1 px-6 py-8">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3">
+          {months.length === 0 ? (
+            <Card>
+              <CardContent className="px-6 py-16 text-center">
+                <p className="text-base">Aucune transaction pour ce compte.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Importe ton premier relevé pour démarrer.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            months.map((m) => {
               const isPositive = m.score >= 0
               return (
-                <li key={m.monthSlug}>
-                  <Link
-                    href={`/accounts/${account.id}/months/${m.monthSlug}`}
-                    className="group flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-5 py-4 transition hover:border-neutral-300 hover:shadow-sm"
-                  >
-                    <div className="flex items-center gap-4">
-                      <span
-                        className={`inline-block h-3 w-3 rounded-full ${
-                          isPositive ? 'bg-emerald-500' : 'bg-red-500'
-                        }`}
-                        aria-label={isPositive ? 'Solde positif' : 'Solde négatif'}
-                      />
-                      <div>
-                        <p className="text-base font-medium text-neutral-900">{m.label}</p>
-                        <p className="mt-0.5 text-xs text-neutral-500">
-                          {m.count} transaction{m.count > 1 ? 's' : ''}
-                          {m.unreconciled > 0 ? (
-                            <>
-                              {' · '}
-                              <span className="font-medium text-amber-700">
-                                {m.unreconciled} non lettrée{m.unreconciled > 1 ? 's' : ''}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              {' · '}
-                              <span className="font-medium text-emerald-700">Tout lettré</span>
-                            </>
-                          )}
-                        </p>
+                <Link key={m.monthSlug} href={`/accounts/${account.id}/months/${m.monthSlug}`}>
+                  <Card className="transition hover:border-foreground/30 hover:shadow-sm">
+                    <CardContent className="flex items-center justify-between p-5">
+                      <div className="flex items-center gap-4">
+                        <span
+                          className={`inline-block h-3 w-3 rounded-full ${
+                            isPositive ? 'bg-emerald-500' : 'bg-red-500'
+                          }`}
+                          aria-label={isPositive ? 'Solde positif' : 'Solde négatif'}
+                        />
+                        <div>
+                          <p className="text-base font-semibold">{m.label}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {m.count} transaction{m.count > 1 ? 's' : ''}
+                            {m.unreconciled > 0 ? (
+                              <>
+                                {' · '}
+                                <span className="font-medium text-amber-700">
+                                  {m.unreconciled} non lettrée{m.unreconciled > 1 ? 's' : ''}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                {' · '}
+                                <span className="font-medium text-emerald-700">Tout lettré</span>
+                              </>
+                            )}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <span
-                      className={`text-sm font-semibold tabular-nums ${
-                        isPositive ? 'text-emerald-700' : 'text-red-700'
-                      }`}
-                    >
-                      {amountFormatter.format(m.score)}
-                    </span>
-                  </Link>
-                </li>
+                      <span
+                        className={`text-lg font-semibold tabular-nums ${
+                          isPositive ? 'text-emerald-700' : 'text-red-700'
+                        }`}
+                      >
+                        {amountFormatter.format(m.score)}
+                      </span>
+                    </CardContent>
+                  </Card>
+                </Link>
               )
-            })}
-          </ul>
-        )}
-      </section>
-    </main>
+            })
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

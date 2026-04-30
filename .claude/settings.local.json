@@ -13,7 +13,18 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git branch *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(npx shadcn@latest init --yes --base-color neutral)",
+      "Bash(npx shadcn@latest init --help)",
+      "Bash(npx shadcn@latest init --yes --defaults --force)",
+      "Bash(npx shadcn@latest add sheet button input label textarea card badge table separator radio-group --yes)",
+      "Bash(rm tailwind.config.ts)",
+      "Bash(npm uninstall *)"
     ]
   }
 }
