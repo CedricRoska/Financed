@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { signup } from './actions'
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -17,66 +20,92 @@ export default async function SignupPage({
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? 'Une erreur est survenue.') : null
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6 py-24">
-      <div className="w-full max-w-sm">
-        <h1 className="text-center text-4xl font-semibold tracking-tight text-neutral-900">
-          Financed
-        </h1>
-        <p className="mt-3 text-center text-sm text-neutral-600">Crée ton compte</p>
+    <div className="flex min-h-screen">
+      {/* Left — form */}
+      <div className="flex w-full flex-col justify-center px-6 py-12 sm:px-12 lg:w-1/2">
+        <div className="mx-auto w-full max-w-sm">
+          <h1 className="text-2xl font-semibold tracking-tight">Bienvenue</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Crée ton compte pour démarrer ton rituel financier.
+          </p>
 
-        <form action={signup} className="mt-10 flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-neutral-700">Email</span>
-            <input
-              type="email"
-              name="email"
-              required
-              autoComplete="email"
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none ring-emerald-500/20 focus:border-emerald-500 focus:ring-4"
-            />
-          </label>
+          <form action={signup} className="mt-10 flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                name="email"
+                required
+                autoComplete="email"
+                placeholder="toi@exemple.com"
+              />
+            </div>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-neutral-700">
-              Mot de passe <span className="text-neutral-400">(6 caractères minimum)</span>
-            </span>
-            <input
-              type="password"
-              name="password"
-              required
-              autoComplete="new-password"
-              minLength={6}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none ring-emerald-500/20 focus:border-emerald-500 focus:ring-4"
-            />
-          </label>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="password">Mot de passe</Label>
+                <span className="text-xs text-muted-foreground">6 caractères minimum</span>
+              </div>
+              <Input
+                id="password"
+                type="password"
+                name="password"
+                required
+                autoComplete="new-password"
+                minLength={6}
+                placeholder="••••••••"
+              />
+            </div>
 
-          {errorMessage ? (
-            <p
-              className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200"
-              role="alert"
-            >
-              {errorMessage}
-            </p>
-          ) : null}
+            {errorMessage ? (
+              <p
+                className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                role="alert"
+              >
+                {errorMessage}
+              </p>
+            ) : null}
 
-          <button
-            type="submit"
-            className="mt-2 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 focus:outline-none focus:ring-4 focus:ring-neutral-900/20"
-          >
-            Créer mon compte
-          </button>
-        </form>
+            <Button type="submit" className="mt-2 w-full">
+              Créer mon compte
+            </Button>
+          </form>
 
-        <p className="mt-8 text-center text-sm text-neutral-600">
-          Déjà un compte ?{' '}
-          <Link
-            href="/login"
-            className="font-medium text-emerald-700 underline-offset-4 hover:underline"
-          >
-            Se connecter
-          </Link>
-        </p>
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            Déjà un compte ?{' '}
+            <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
+              Se connecter
+            </Link>
+          </p>
+        </div>
       </div>
-    </main>
+
+      {/* Right — brand showcase */}
+      <div className="relative hidden overflow-hidden bg-foreground text-background lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:px-12 lg:py-16">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-foreground via-foreground to-foreground/80" />
+        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
+
+        <div className="relative">
+          <div className="text-2xl font-semibold tracking-tight">Financed</div>
+        </div>
+
+        <div className="relative space-y-8">
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight">
+            Un rituel financier <br />qui t&apos;apaise.
+          </h2>
+          <p className="max-w-md text-background/80">
+            Importe ton relevé. Valide chaque ligne. Marque qui te doit quoi. Retrouve-toi dans ton argent — sans laisser une IA décider à ta place.
+          </p>
+          <ul className="space-y-2 text-sm text-background/70">
+            <li>· Sans connexion bancaire</li>
+            <li>· Lettrage avancé pour les remboursements</li>
+            <li>· Score mensuel mathématique, sans prédictif</li>
+            <li>· Conçu pour être premium et clair</li>
+          </ul>
+        </div>
+      </div>
+    </div>
   )
 }

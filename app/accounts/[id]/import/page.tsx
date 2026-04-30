@@ -3,6 +3,17 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { use, useState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { parseCSVFile } from '@/lib/import/parse-csv'
 import type { ImportError, ImportPreview } from '@/lib/import/types'
 import { commitImport, previewImport } from './actions'
@@ -81,65 +92,70 @@ export default function ImportPage({ params }: { params: Promise<{ id: string }>
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-12">
-      <header className="flex items-center justify-between">
+    <div className="flex min-h-screen flex-col">
+      <header className="flex items-center justify-between border-b bg-background px-6 py-4">
         <Link
           href={`/accounts/${accountId}`}
-          className="text-sm text-neutral-500 transition hover:text-neutral-700"
+          className="text-sm text-muted-foreground transition hover:text-foreground"
         >
           ← Retour au compte
         </Link>
         <form action="/logout" method="POST">
-          <button
-            type="submit"
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50"
-          >
+          <Button type="submit" variant="outline" size="sm">
             Se déconnecter
-          </button>
+          </Button>
         </form>
       </header>
 
-      <h1 className="mt-10 text-3xl font-semibold tracking-tight text-neutral-900">
-        Importer un relevé
-      </h1>
-      <p className="mt-2 text-sm text-neutral-500">
-        Format supporté : CSV Banque Populaire (séparateur <code>;</code>, encoding UTF-8).
-      </p>
+      <main className="flex-1 px-6 py-10">
+        <div className="mx-auto flex max-w-5xl flex-col gap-6">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">Importer un relevé</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Format supporté : CSV Banque Populaire. Glisse simplement le fichier exporté depuis ton espace en ligne.
+            </p>
+          </div>
 
-      {error ? (
-        <div
-          className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200"
-          role="alert"
-        >
-          {error.message}
+          {error ? (
+            <div
+              className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              role="alert"
+            >
+              {error.message}
+            </div>
+          ) : null}
+
+          {phase.kind === 'upload' || phase.kind === 'parsing' ? (
+            <UploadView phase={phase} onFile={handleFile} />
+          ) : null}
+
+          {phase.kind === 'preview' ? (
+            <PreviewView
+              preview={phase.preview}
+              fileName={phase.fileName}
+              onCommit={handleCommit}
+              onCancel={handleCancel}
+            />
+          ) : null}
+
+          {phase.kind === 'committing' ? (
+            <Card>
+              <CardContent className="px-6 py-12 text-center text-sm text-muted-foreground">
+                Import en cours…
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {phase.kind === 'success' ? (
+            <SuccessView
+              inserted={phase.inserted}
+              duplicates={phase.duplicates}
+              onBack={() => router.push(`/accounts/${accountId}`)}
+            />
+          ) : null}
         </div>
-      ) : null}
-
-      {phase.kind === 'upload' || phase.kind === 'parsing' ? (
-        <UploadView phase={phase} onFile={handleFile} />
-      ) : null}
-
-      {phase.kind === 'preview' ? (
-        <PreviewView
-          preview={phase.preview}
-          fileName={phase.fileName}
-          onCommit={handleCommit}
-          onCancel={handleCancel}
-        />
-      ) : null}
-
-      {phase.kind === 'committing' ? (
-        <p className="mt-12 text-center text-sm text-neutral-500">Import en cours…</p>
-      ) : null}
-
-      {phase.kind === 'success' ? (
-        <SuccessView
-          inserted={phase.inserted}
-          duplicates={phase.duplicates}
-          onBack={() => router.push(`/accounts/${accountId}`)}
-        />
-      ) : null}
-    </main>
+      </main>
+    </div>
   )
 }
 
@@ -166,21 +182,21 @@ function UploadView({
         const file = e.dataTransfer.files[0]
         if (file) onFile(file)
       }}
-      className={`mt-10 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-16 transition ${
+      className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-20 transition ${
         isDragging
-          ? 'border-emerald-500 bg-emerald-50'
-          : 'border-neutral-300 bg-neutral-50/50'
+          ? 'border-emerald-500 bg-emerald-50/50'
+          : 'border-border bg-muted/20'
       }`}
     >
-      <p className="text-base font-medium text-neutral-800">
+      <p className="text-base font-medium">
         {isParsing ? 'Analyse du fichier…' : 'Glisse ton fichier CSV ici'}
       </p>
-      <p className="mt-1 text-sm text-neutral-500">
+      <p className="mt-1 text-sm text-muted-foreground">
         {isParsing ? 'Patiente quelques secondes' : 'ou clique sur le bouton ci-dessous'}
       </p>
 
       {!isParsing ? (
-        <label className="mt-6 inline-flex cursor-pointer items-center rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800">
+        <label className="mt-6 inline-flex cursor-pointer items-center rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
           Sélectionner un fichier
           <input
             type="file"
@@ -209,98 +225,90 @@ function PreviewView({
   onCancel: () => void
 }) {
   return (
-    <section className="mt-10">
-      <header className="flex items-center justify-between">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wider text-neutral-500">{fileName}</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-neutral-900">
-            Prévisualisation
-          </h2>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">{fileName}</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight">Prévisualisation</h2>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50"
-          >
+          <Button type="button" variant="outline" onClick={onCancel}>
             Annuler
-          </button>
-          <button
-            type="button"
-            onClick={onCommit}
-            disabled={preview.newCount === 0}
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Confirmer l&apos;import ({preview.newCount} nouvelle{preview.newCount > 1 ? 's' : ''})
-          </button>
+          </Button>
+          <Button type="button" onClick={onCommit} disabled={preview.newCount === 0}>
+            Confirmer ({preview.newCount} nouvelle{preview.newCount > 1 ? 's' : ''})
+          </Button>
         </div>
-      </header>
-
-      <dl className="mt-6 grid grid-cols-3 gap-4">
-        <Stat label="Total" value={preview.total} />
-        <Stat label="Nouvelles" value={preview.newCount} accent="emerald" />
-        <Stat label="Doublons" value={preview.duplicateCount} accent="neutral" />
-      </dl>
-
-      <div className="mt-8 overflow-hidden rounded-xl border border-neutral-200">
-        <table className="w-full text-sm">
-          <thead className="bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium">Date</th>
-              <th className="px-4 py-3 text-left font-medium">Libellé</th>
-              <th className="px-4 py-3 text-right font-medium">Montant</th>
-              <th className="px-4 py-3 text-left font-medium">Statut</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100 bg-white">
-            {preview.transactions.map((t) => (
-              <tr key={t.hash}>
-                <td className="px-4 py-3 text-neutral-600">
-                  {dateFormatter.format(new Date(t.op_date))}
-                </td>
-                <td className="px-4 py-3 text-neutral-900">{t.raw_label}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-neutral-900">
-                  {amountFormatter.format(t.amount)}
-                </td>
-                <td className="px-4 py-3">
-                  {t.status === 'new' ? (
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
-                      Nouvelle
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600 ring-1 ring-neutral-200">
-                      Doublon
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
-    </section>
-  )
-}
 
-function Stat({
-  label,
-  value,
-  accent = 'default',
-}: {
-  label: string
-  value: number
-  accent?: 'default' | 'emerald' | 'neutral'
-}) {
-  const colorClass =
-    accent === 'emerald'
-      ? 'text-emerald-700'
-      : accent === 'neutral'
-        ? 'text-neutral-600'
-        : 'text-neutral-900'
-  return (
-    <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3">
-      <dt className="text-xs uppercase tracking-wider text-neutral-500">{label}</dt>
-      <dd className={`mt-1 text-2xl font-semibold tabular-nums ${colorClass}`}>{value}</dd>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Total</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">{preview.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Nouvelles</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
+              {preview.newCount}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Doublons</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-muted-foreground">
+              {preview.duplicateCount}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[120px]">Date</TableHead>
+              <TableHead>Libellé</TableHead>
+              <TableHead className="text-right">Montant</TableHead>
+              <TableHead className="w-[120px]">Statut</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {preview.transactions.map((t) => (
+              <TableRow key={t.hash}>
+                <TableCell className="text-muted-foreground">
+                  {dateFormatter.format(new Date(t.op_date))}
+                </TableCell>
+                <TableCell className="font-medium">{t.raw_label}</TableCell>
+                <TableCell
+                  className={`text-right tabular-nums ${
+                    t.amount >= 0 ? 'font-medium text-emerald-700' : ''
+                  }`}
+                >
+                  {amountFormatter.format(t.amount)}
+                </TableCell>
+                <TableCell>
+                  {t.status === 'new' ? (
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                    >
+                      Nouvelle
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Doublon
+                    </Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   )
 }
@@ -315,21 +323,20 @@ function SuccessView({
   onBack: () => void
 }) {
   return (
-    <section className="mt-12 rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-10 text-center">
-      <p className="text-base font-medium text-emerald-900">
-        Import terminé ✅
-      </p>
-      <p className="mt-2 text-sm text-emerald-800">
-        {inserted} transaction{inserted > 1 ? 's' : ''} importée{inserted > 1 ? 's' : ''}
-        {duplicates > 0 ? `, ${duplicates} doublon${duplicates > 1 ? 's' : ''} ignoré${duplicates > 1 ? 's' : ''}` : ''}.
-      </p>
-      <button
-        type="button"
-        onClick={onBack}
-        className="mt-6 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800"
-      >
-        Retour au compte
-      </button>
-    </section>
+    <Card className="border-emerald-200 bg-emerald-50/50">
+      <CardContent className="px-6 py-12 text-center">
+        <p className="text-base font-medium text-emerald-900">Import terminé ✅</p>
+        <p className="mt-2 text-sm text-emerald-800">
+          {inserted} transaction{inserted > 1 ? 's' : ''} importée{inserted > 1 ? 's' : ''}
+          {duplicates > 0
+            ? `, ${duplicates} doublon${duplicates > 1 ? 's' : ''} ignoré${duplicates > 1 ? 's' : ''}`
+            : ''}
+          .
+        </p>
+        <Button onClick={onBack} className="mt-6">
+          Retour au compte
+        </Button>
+      </CardContent>
+    </Card>
   )
 }

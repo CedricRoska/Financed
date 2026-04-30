@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { login } from './actions'
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -15,64 +18,102 @@ export default async function LoginPage({
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? 'Une erreur est survenue.') : null
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6 py-24">
-      <div className="w-full max-w-sm">
-        <h1 className="text-center text-4xl font-semibold tracking-tight text-neutral-900">
-          Financed
-        </h1>
-        <p className="mt-3 text-center text-sm text-neutral-600">Connecte-toi à ton compte</p>
+    <div className="flex min-h-screen">
+      {/* Left — form */}
+      <div className="flex w-full flex-col justify-center px-6 py-12 sm:px-12 lg:w-1/2">
+        <div className="mx-auto w-full max-w-sm">
+          <h1 className="text-2xl font-semibold tracking-tight">Bon retour</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Connecte-toi pour reprendre la main sur tes finances.
+          </p>
 
-        <form action={login} className="mt-10 flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-neutral-700">Email</span>
-            <input
-              type="email"
-              name="email"
-              required
-              autoComplete="email"
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none ring-emerald-500/20 focus:border-emerald-500 focus:ring-4"
-            />
-          </label>
+          <form action={login} className="mt-10 flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                name="email"
+                required
+                autoComplete="email"
+                placeholder="toi@exemple.com"
+              />
+            </div>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-neutral-700">Mot de passe</span>
-            <input
-              type="password"
-              name="password"
-              required
-              autoComplete="current-password"
-              minLength={6}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none ring-emerald-500/20 focus:border-emerald-500 focus:ring-4"
-            />
-          </label>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Input
+                id="password"
+                type="password"
+                name="password"
+                required
+                autoComplete="current-password"
+                minLength={6}
+                placeholder="••••••••"
+              />
+            </div>
 
-          {errorMessage ? (
-            <p
-              className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200"
-              role="alert"
-            >
-              {errorMessage}
-            </p>
-          ) : null}
+            {errorMessage ? (
+              <p
+                className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                role="alert"
+              >
+                {errorMessage}
+              </p>
+            ) : null}
 
-          <button
-            type="submit"
-            className="mt-2 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 focus:outline-none focus:ring-4 focus:ring-neutral-900/20"
-          >
-            Se connecter
-          </button>
-        </form>
+            <Button type="submit" className="mt-2 w-full">
+              Se connecter
+            </Button>
+          </form>
 
-        <p className="mt-8 text-center text-sm text-neutral-600">
-          Pas encore de compte ?{' '}
-          <Link
-            href="/signup"
-            className="font-medium text-emerald-700 underline-offset-4 hover:underline"
-          >
-            Créer un compte
-          </Link>
-        </p>
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            Pas encore de compte ?{' '}
+            <Link href="/signup" className="font-medium text-foreground underline-offset-4 hover:underline">
+              Créer un compte
+            </Link>
+          </p>
+        </div>
       </div>
-    </main>
+
+      {/* Right — brand showcase */}
+      <div className="relative hidden overflow-hidden bg-foreground text-background lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:px-12 lg:py-16">
+        {/* Soft gradient overlay */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-foreground via-foreground to-foreground/80" />
+        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
+
+        <div className="relative">
+          <div className="text-2xl font-semibold tracking-tight">Financed</div>
+        </div>
+
+        <div className="relative space-y-8">
+          <blockquote className="space-y-4 text-lg font-medium leading-relaxed">
+            <p>
+              « Reprends le contrôle de chaque ligne de ton relevé bancaire. Sans connexion bancaire, sans IA tape-à-l&apos;œil, sans promesse intenable. »
+            </p>
+          </blockquote>
+
+          <div className="grid grid-cols-2 gap-4 text-sm text-background/70">
+            <div>
+              <p className="font-medium text-background">Privacy first</p>
+              <p className="mt-1">Aucune connexion bancaire. Tu importes, tu valides.</p>
+            </div>
+            <div>
+              <p className="font-medium text-background">Lettrage signature</p>
+              <p className="mt-1">Quand Paul te doit 85€, tu le sais. Toujours.</p>
+            </div>
+            <div>
+              <p className="font-medium text-background">LLM saupoudré</p>
+              <p className="mt-1">L&apos;IA propose. L&apos;humain dispose.</p>
+            </div>
+            <div>
+              <p className="font-medium text-background">Premium &amp; clair</p>
+              <p className="mt-1">Une typo soignée pour un rituel apaisant.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -68,10 +68,6 @@ export default async function MonthDetailPage({
     }
   })
 
-  const total = enriched.reduce((sum, t) => sum + t.amount, 0)
-  const isPositive = total >= 0
-  const unreconciledCount = enriched.filter((t) => t.unreconciled).length
-
   return (
     <MonthClient
       accountId={accountId}
@@ -79,9 +75,6 @@ export default async function MonthDetailPage({
       isHybrid={account.is_hybrid}
       monthLabel={formatMonthLabelFR(monthSlug)}
       transactions={enriched}
-      total={total}
-      isPositive={isPositive}
-      unreconciledCount={unreconciledCount}
     />
   )
 }
