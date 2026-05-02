@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { LogOutIcon, SettingsIcon, WalletIcon } from 'lucide-react'
+import { CreditCardIcon, PlusCircleIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { AuthenticatedShell } from '@/components/authenticated-shell'
 import { createClient } from '@/lib/supabase/server'
 import { createAccount } from './actions'
 
@@ -40,7 +40,6 @@ export default async function DashboardPage({
     .select('id, name, is_hybrid, created_at')
     .order('created_at', { ascending: false })
 
-  // Stats globales
   const { count: txCount } = await supabase
     .from('transactions')
     .select('*', { count: 'exact', head: true })
@@ -52,32 +51,8 @@ export default async function DashboardPage({
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? 'Une erreur est survenue.') : null
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b bg-background px-6 py-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <WalletIcon className="size-5" />
-          <span className="text-lg font-semibold tracking-tight">Financed</span>
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-muted-foreground sm:inline">{user.email}</span>
-          <Link
-            href="/settings"
-            aria-label="Paramètres"
-            className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-          >
-            <SettingsIcon className="size-4" />
-          </Link>
-          <ThemeToggle />
-          <form action="/logout" method="POST">
-            <Button type="submit" variant="outline" size="sm">
-              <LogOutIcon className="size-4" />
-              Se déconnecter
-            </Button>
-          </form>
-        </div>
-      </header>
-
-      <main className="flex-1 px-6 py-10">
+    <AuthenticatedShell>
+      <div className="px-6 py-10 lg:px-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-10">
           {/* Hero */}
           <section>
@@ -89,13 +64,10 @@ export default async function DashboardPage({
               Choisis un compte pour explorer ses transactions, ou ajoute-en un nouveau pour démarrer.
             </p>
 
-            {/* Stats */}
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
               <Card>
                 <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Comptes
-                  </p>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Comptes</p>
                   <p className="mt-1 text-3xl font-semibold tabular-nums">{accountsCount}</p>
                 </CardContent>
               </Card>
@@ -109,12 +81,8 @@ export default async function DashboardPage({
               </Card>
               <Card>
                 <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    Mode V1
-                  </p>
-                  <p className="mt-1 text-base font-medium">
-                    Local-cloud · Banque Populaire
-                  </p>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Mode V1</p>
+                  <p className="mt-1 text-base font-medium">Local · Banque Populaire</p>
                 </CardContent>
               </Card>
             </div>
@@ -136,9 +104,12 @@ export default async function DashboardPage({
                     <Card className="h-full transition hover:border-foreground/30 hover:shadow-sm">
                       <CardContent className="flex h-full flex-col gap-3 p-5">
                         <div className="flex items-start justify-between gap-2">
-                          <span className="line-clamp-2 text-base font-semibold">
-                            {account.name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <CreditCardIcon className="size-4 text-muted-foreground" />
+                            <span className="line-clamp-1 text-base font-semibold">
+                              {account.name}
+                            </span>
+                          </div>
                           {account.is_hybrid ? (
                             <Badge
                               variant="outline"
@@ -159,6 +130,7 @@ export default async function DashboardPage({
             ) : (
               <Card className="mt-4">
                 <CardContent className="px-6 py-12 text-center">
+                  <CreditCardIcon className="mx-auto mb-3 size-10 text-muted-foreground" />
                   <p className="text-base">Tu n&apos;as pas encore de compte bancaire.</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Ajoute le premier ci-dessous pour commencer.
@@ -170,9 +142,12 @@ export default async function DashboardPage({
 
           {/* Add account */}
           <section>
-            <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Ajouter un compte
-            </h3>
+            <div className="flex items-center gap-2">
+              <PlusCircleIcon className="size-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                Ajouter un compte
+              </h3>
+            </div>
             <Card className="mt-4">
               <CardContent className="p-6">
                 <form action={createAccount} className="flex flex-col gap-4">
@@ -210,6 +185,7 @@ export default async function DashboardPage({
                   ) : null}
 
                   <Button type="submit" className="self-start">
+                    <PlusCircleIcon className="size-4" />
                     Créer le compte
                   </Button>
                 </form>
@@ -217,7 +193,7 @@ export default async function DashboardPage({
             </Card>
           </section>
         </div>
-      </main>
-    </div>
+      </div>
+    </AuthenticatedShell>
   )
 }

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { AuthenticatedShell } from '@/components/authenticated-shell'
 import { formatMonthLabelFR, parseMonthSlug } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionToProcess } from '@/lib/transactions/validation'
@@ -63,12 +64,14 @@ export default async function MonthDetailPage({
   })
 
   return (
-    <MonthClient
-      accountId={accountId}
-      accountName={account.name}
-      isHybrid={account.is_hybrid}
-      monthLabel={formatMonthLabelFR(monthSlug)}
-      transactions={enriched}
-    />
+    <AuthenticatedShell>
+      <MonthClient
+        accountId={accountId}
+        accountName={account.name}
+        isHybrid={account.is_hybrid}
+        monthLabel={formatMonthLabelFR(monthSlug)}
+        transactions={enriched}
+      />
+    </AuthenticatedShell>
   )
 }

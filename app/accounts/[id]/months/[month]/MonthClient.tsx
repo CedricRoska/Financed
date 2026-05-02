@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useTransition, useState, useMemo } from 'react'
-import { ArrowLeftIcon, LogOutIcon, SearchIcon } from 'lucide-react'
+import { ArrowLeftIcon, SearchIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { CategoryBreakdown } from './CategoryBreakdown'
 import { DEFAULT_CATEGORY_SUGGESTIONS } from '@/lib/categories/defaults'
 import {
   resolveExpectedRefund,
@@ -172,33 +172,19 @@ export function MonthClient({
   const hasResolvedRefund = Boolean(selectedTx?.annotation?.refund_resolved_at)
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b bg-background px-6 py-4">
-        <Link
-          href={`/accounts/${accountId}`}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
-        >
-          <ArrowLeftIcon className="size-4" />
-          {accountName}
-        </Link>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <form action="/logout" method="POST">
-            <Button type="submit" variant="outline" size="sm">
-              <LogOutIcon className="size-4" />
-              Se déconnecter
-            </Button>
-          </form>
-        </div>
-      </header>
-
+    <div className="flex flex-col">
       {/* Title + stats */}
-      <section className="border-b bg-muted/20 px-6 py-8">
+      <section className="border-b bg-muted/20 px-6 py-8 lg:px-10">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-sm text-muted-foreground">{accountName}</p>
+              <Link
+                href={`/accounts/${accountId}`}
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-foreground"
+              >
+                <ArrowLeftIcon className="size-3" />
+                {accountName}
+              </Link>
               <h1 className="mt-1 text-3xl font-semibold tracking-tight">{monthLabel}</h1>
             </div>
             <div className="flex items-center gap-3">
@@ -260,7 +246,7 @@ export function MonthClient({
       </section>
 
       {/* Filters */}
-      <section className="border-b bg-background px-6 py-4">
+      <section className="border-b bg-background px-6 py-4 lg:px-10">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
           {isHybrid ? (
             <Tabs value={tab} onValueChange={(v) => setTab(v as 'all' | 'pro' | 'perso')}>
@@ -301,8 +287,15 @@ export function MonthClient({
         </div>
       </section>
 
+      {/* Category breakdown chart */}
+      <section className="px-6 py-6 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <CategoryBreakdown transactions={filtered} />
+        </div>
+      </section>
+
       {/* Table */}
-      <main className="flex-1 px-6 py-6">
+      <main className="flex-1 px-6 pb-10 lg:px-10">
         <div className="mx-auto flex max-w-7xl flex-col">
           {filtered.length === 0 ? (
             <Card>

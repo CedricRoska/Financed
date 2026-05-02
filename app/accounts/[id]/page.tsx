@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeftIcon, LogOutIcon, UploadIcon } from 'lucide-react'
+import { CreditCardIcon, UploadIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { AuthenticatedShell } from '@/components/authenticated-shell'
 import { groupTransactionsByMonth } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionValidated } from '@/lib/transactions/validation'
@@ -62,37 +62,18 @@ export default async function AccountDetailPage({
   })
 
   const months = groupTransactionsByMonth(enriched)
-
   const totalBalance = enriched.reduce((sum, t) => sum + t.amount, 0)
   const totalToProcess = enriched.filter((t) => !t.hasAnnotation).length
   const totalIncome = enriched.filter((t) => t.amount > 0).reduce((sum, t) => sum + t.amount, 0)
   const totalExpenses = enriched.filter((t) => t.amount < 0).reduce((sum, t) => sum + t.amount, 0)
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b bg-background px-6 py-4">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
-        >
-          <ArrowLeftIcon className="size-4" />
-          Dashboard
-        </Link>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <form action="/logout" method="POST">
-            <Button type="submit" variant="outline" size="sm">
-              <LogOutIcon className="size-4" />
-              Se déconnecter
-            </Button>
-          </form>
-        </div>
-      </header>
-
-      <section className="border-b bg-muted/20 px-6 py-8">
+    <AuthenticatedShell>
+      <section className="border-b bg-muted/20 px-6 py-8 lg:px-10">
         <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
+              <CreditCardIcon className="size-5 text-muted-foreground" />
               <h1 className="text-3xl font-semibold tracking-tight">{account.name}</h1>
               {account.is_hybrid ? (
                 <Badge
@@ -108,16 +89,12 @@ export default async function AccountDetailPage({
             </p>
           </div>
 
-          <Link
-            href={`/accounts/${account.id}/import`}
-            className={buttonVariants()}
-          >
+          <Link href={`/accounts/${account.id}/import`} className={buttonVariants()}>
             <UploadIcon className="size-4" />
             Importer un relevé
           </Link>
         </div>
 
-        {/* Stats row */}
         {enriched.length > 0 ? (
           <div className="mx-auto mt-8 grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -172,13 +149,14 @@ export default async function AccountDetailPage({
         ) : null}
       </section>
 
-      <main className="flex-1 px-6 py-8">
+      <div className="px-6 py-8 lg:px-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-3">
           <h2 className="text-lg font-semibold tracking-tight">Mois</h2>
 
           {months.length === 0 ? (
             <Card>
               <CardContent className="px-6 py-16 text-center">
+                <UploadIcon className="mx-auto mb-3 size-10 text-muted-foreground" />
                 <p className="text-base">Aucune transaction pour ce compte.</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Importe ton premier relevé pour démarrer.
@@ -257,7 +235,7 @@ export default async function AccountDetailPage({
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </AuthenticatedShell>
   )
 }

@@ -26,7 +26,8 @@
       "Bash(rm tailwind.config.ts)",
       "Bash(npm uninstall *)",
       "Bash(npx shadcn@latest add tabs select --yes)",
-      "Bash(npx shadcn@latest add sonner --yes)"
+      "Bash(npx shadcn@latest add sonner --yes)",
+      "Bash(npx shadcn@latest add chart --yes)"
     ]
   }
 }
