@@ -6,6 +6,8 @@ import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { AuthenticatedShell } from '@/components/authenticated-shell'
 import { AccountActions } from './AccountActions'
+import { TrendChart, type MonthlyTrendPoint } from './TrendChart'
+import { monthSlugFromOpDate } from '@/lib/months/format'
 import { groupTransactionsByMonth } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionValidated } from '@/lib/transactions/validation'
@@ -67,6 +69,25 @@ export default async function AccountDetailPage({
   const totalToProcess = enriched.filter((t) => !t.hasAnnotation).length
   const totalIncome = enriched.filter((t) => t.amount > 0).reduce((sum, t) => sum + t.amount, 0)
   const totalExpenses = enriched.filter((t) => t.amount < 0).reduce((sum, t) => sum + t.amount, 0)
+
+  // Trend chart data: groupe par mois income/expenses/net
+  const trendMap = new Map<string, MonthlyTrendPoint>()
+  for (const t of enriched) {
+    const slug = monthSlugFromOpDate(t.op_date)
+    const existing = trendMap.get(slug) ?? {
+      monthSlug: slug,
+      income: 0,
+      expenses: 0,
+      net: 0,
+    }
+    if (t.amount >= 0) existing.income += t.amount
+    else existing.expenses += t.amount
+    existing.net += t.amount
+    trendMap.set(slug, existing)
+  }
+  const trend = [...trendMap.values()].sort((a, b) =>
+    a.monthSlug < b.monthSlug ? -1 : 1,
+  )
 
   return (
     <AuthenticatedShell>
@@ -154,7 +175,9 @@ export default async function AccountDetailPage({
       </section>
 
       <div className="px-6 py-8 lg:px-10">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6">
+          {trend.length > 1 ? <TrendChart trend={trend} /> : null}
+
           <h2 className="text-lg font-semibold tracking-tight">Mois</h2>
 
           {months.length === 0 ? (

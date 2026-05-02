@@ -1,7 +1,7 @@
 'use server'
 
-import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { monthSlugFromOpDate } from '@/lib/months/format'
 
@@ -14,13 +14,18 @@ function emptyToNull(value: FormDataEntryValue | null): string | null {
 /**
  * Server Action : UPSERT d'une annotation transaction.
  * Couvre FR28 (catégorie), FR31 (commentaire), FR37 (expected refund).
+ *
+ * Ne redirige plus — retourne juste un résultat. Le client gère la
+ * navigation / la fermeture de la Sheet / l'auto-advance.
+ *
+ * Validation : catégorie ≥ 2 chars (sinon traitée comme vide).
  */
-export async function saveAnnotation(formData: FormData) {
+export async function saveAnnotation(formData: FormData): Promise<void> {
   const transactionId = formData.get('transaction_id')
   const accountId = formData.get('account_id')
 
   if (typeof transactionId !== 'string' || typeof accountId !== 'string') {
-    redirect('/dashboard')
+    throw new Error('Données de formulaire invalides')
   }
 
   const supabase = await createClient()
@@ -37,18 +42,22 @@ export async function saveAnnotation(formData: FormData) {
     .maybeSingle()
 
   if (!transaction) {
-    redirect(`/accounts/${accountId}`)
+    throw new Error('Transaction introuvable')
   }
 
   const proPersoRaw = emptyToNull(formData.get('pro_perso'))
   const proPerso =
     proPersoRaw === 'pro' || proPersoRaw === 'perso' ? proPersoRaw : null
 
+  // Validation catégorie ≥ 2 chars (sinon null)
+  const categoryRaw = emptyToNull(formData.get('category'))
+  const category = categoryRaw && categoryRaw.length >= 2 ? categoryRaw : null
+
   const { error } = await supabase.from('transaction_annotations').upsert(
     {
       transaction_id: transactionId,
       user_id: user.id,
-      category: emptyToNull(formData.get('category')),
+      category,
       comment: emptyToNull(formData.get('comment')),
       pro_perso: proPerso,
       expected_refund_from: emptyToNull(formData.get('expected_refund_from')),
@@ -58,30 +67,20 @@ export async function saveAnnotation(formData: FormData) {
   )
 
   if (error) {
-    redirect(
-      `/accounts/${accountId}/transactions/${transactionId}/edit?error=save-failed`,
-    )
+    throw new Error(`Erreur sauvegarde : ${error.message}`)
   }
 
   const monthSlug = monthSlugFromOpDate(transaction.op_date)
   revalidatePath(`/accounts/${accountId}/months/${monthSlug}`)
   revalidatePath(`/accounts/${accountId}`)
-  redirect(`/accounts/${accountId}/months/${monthSlug}`)
 }
 
 type ResolveRefundKind = 'cash' | 'wire' | 'loss'
 
 /**
  * Server Action : marque un remboursement attendu comme résolu.
- *
- * Trois types de résolution :
- *   - cash : reçu en liquide (la transaction de remboursement n'apparaîtra pas dans le compte)
- *   - wire : reçu sur le compte (virement visible)
- *   - loss : passé en perte (créance abandonnée volontairement)
- *
- * Une fois résolu, la transaction d'origine devient "validée" si elle a une catégorie.
  */
-export async function resolveExpectedRefund(formData: FormData) {
+export async function resolveExpectedRefund(formData: FormData): Promise<void> {
   const transactionId = formData.get('transaction_id')
   const accountId = formData.get('account_id')
   const kind = formData.get('kind')
@@ -93,7 +92,7 @@ export async function resolveExpectedRefund(formData: FormData) {
     typeof kind !== 'string' ||
     !['cash', 'wire', 'loss'].includes(kind)
   ) {
-    redirect(`/accounts/${accountId}`)
+    throw new Error('Données invalides')
   }
 
   const supabase = await createClient()
@@ -110,7 +109,7 @@ export async function resolveExpectedRefund(formData: FormData) {
     .maybeSingle()
 
   if (!transaction) {
-    redirect(`/accounts/${accountId}`)
+    throw new Error('Transaction introuvable')
   }
 
   const { error } = await supabase
@@ -124,26 +123,23 @@ export async function resolveExpectedRefund(formData: FormData) {
     .eq('user_id', user.id)
 
   if (error) {
-    redirect(
-      `/accounts/${accountId}/transactions/${transactionId}/edit?error=resolve-failed`,
-    )
+    throw new Error(`Erreur résolution : ${error.message}`)
   }
 
   const monthSlug = monthSlugFromOpDate(transaction.op_date)
   revalidatePath(`/accounts/${accountId}/months/${monthSlug}`)
   revalidatePath(`/accounts/${accountId}`)
-  redirect(`/accounts/${accountId}/months/${monthSlug}`)
 }
 
 /**
- * Server Action : annule la résolution d'un remboursement (le remet en attente).
+ * Server Action : annule la résolution d'un remboursement.
  */
-export async function unresolveExpectedRefund(formData: FormData) {
+export async function unresolveExpectedRefund(formData: FormData): Promise<void> {
   const transactionId = formData.get('transaction_id')
   const accountId = formData.get('account_id')
 
   if (typeof transactionId !== 'string' || typeof accountId !== 'string') {
-    redirect('/dashboard')
+    throw new Error('Données invalides')
   }
 
   const supabase = await createClient()
@@ -160,7 +156,7 @@ export async function unresolveExpectedRefund(formData: FormData) {
     .maybeSingle()
 
   if (!transaction) {
-    redirect(`/accounts/${accountId}`)
+    throw new Error('Transaction introuvable')
   }
 
   const { error } = await supabase
@@ -174,13 +170,10 @@ export async function unresolveExpectedRefund(formData: FormData) {
     .eq('user_id', user.id)
 
   if (error) {
-    redirect(
-      `/accounts/${accountId}/transactions/${transactionId}/edit?error=unresolve-failed`,
-    )
+    throw new Error(`Erreur annulation : ${error.message}`)
   }
 
   const monthSlug = monthSlugFromOpDate(transaction.op_date)
   revalidatePath(`/accounts/${accountId}/months/${monthSlug}`)
   revalidatePath(`/accounts/${accountId}`)
-  redirect(`/accounts/${accountId}/months/${monthSlug}`)
 }

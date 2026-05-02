@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useTransition, useState, useMemo } from 'react'
-import { ArrowLeftIcon, CheckIcon, SearchIcon, XIcon } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useTransition, useState, useMemo, useRef } from 'react'
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, SearchIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -106,6 +107,7 @@ export function MonthClient({
   transactions: EnrichedTransaction[]
   knownCategories: string[]
 }) {
+  const router = useRouter()
   const [selectedTx, setSelectedTx] = useState<EnrichedTransaction | null>(null)
   const [tab, setTab] = useState<'all' | 'pro' | 'perso'>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -115,6 +117,8 @@ export function MonthClient({
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkCategory, setBulkCategory] = useState('')
   const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | 'unset' | 'keep'>('keep')
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
+  const focusedRowRef = useRef<HTMLTableRowElement | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const filtered = useMemo(() => {
@@ -181,6 +185,68 @@ export function MonthClient({
     setSelectedIds(new Set(filtered.map((t) => t.id)))
   }
 
+  // Keyboard navigation : J/K/flèches/Enter/Esc quand la Sheet et les Dialogs sont fermés
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (selectedTx !== null || bulkOpen) return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+
+      const key = e.key
+      const lowerKey = key.toLowerCase()
+
+      if (key === 'ArrowDown' || lowerKey === 'j') {
+        if (filtered.length === 0) return
+        e.preventDefault()
+        setFocusedIndex((prev) =>
+          prev === null ? 0 : Math.min(prev + 1, filtered.length - 1),
+        )
+      } else if (key === 'ArrowUp' || lowerKey === 'k') {
+        if (filtered.length === 0) return
+        e.preventDefault()
+        setFocusedIndex((prev) => (prev === null ? 0 : Math.max(prev - 1, 0)))
+      } else if (key === 'Enter') {
+        if (focusedIndex === null) return
+        const row = filtered[focusedIndex]
+        if (row) {
+          e.preventDefault()
+          setSelectedTx(row)
+        }
+      } else if (key === 'Escape') {
+        if (focusedIndex !== null || selectedIds.size > 0) {
+          e.preventDefault()
+          setFocusedIndex(null)
+          if (selectedIds.size > 0) {
+            setSelectedIds(new Set())
+            setLastClickedId(null)
+          }
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [filtered, focusedIndex, selectedTx, bulkOpen, selectedIds.size])
+
+  // Scroll la ligne focusée dans la vue
+  useEffect(() => {
+    if (focusedRowRef.current) {
+      focusedRowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [focusedIndex])
+
+  // Reset focus quand les filtres changent
+  useEffect(() => {
+    setFocusedIndex(null)
+  }, [tab, statusFilter, search])
+
   function handleBulkApply() {
     if (selectedIds.size === 0) return
     const ids = Array.from(selectedIds)
@@ -223,14 +289,35 @@ export function MonthClient({
     return { total, income, expenses, toProcess, count: filtered.length }
   }, [filtered])
 
-  function handleSubmit(formData: FormData) {
+  function advanceToNextOrClose() {
+    if (!selectedTx) return
+    const currentIdx = filtered.findIndex((t) => t.id === selectedTx.id)
+    const nextIdx = currentIdx + 1
+    if (nextIdx >= 0 && nextIdx < filtered.length) {
+      const nextRow = filtered[nextIdx]
+      if (nextRow) {
+        setSelectedTx(nextRow)
+        setFocusedIndex(nextIdx)
+        return
+      }
+    }
+    setSelectedTx(null)
+    toast.info("C'était la dernière transaction du mois !")
+  }
+
+  function handleSubmit(formData: FormData, advance: boolean = false) {
     startTransition(async () => {
       try {
         await saveAnnotation(formData)
         toast.success('Annotation enregistrée')
-      } catch {
-        // Server Action redirige normalement, donc l'erreur est rare ici
-        toast.error("Impossible d'enregistrer l'annotation")
+        router.refresh()
+        if (advance) {
+          advanceToNextOrClose()
+        } else {
+          setSelectedTx(null)
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Impossible d'enregistrer")
       }
     })
   }
@@ -247,8 +334,9 @@ export function MonthClient({
               ? 'Remboursement en liquide enregistré'
               : 'Remboursement par virement enregistré',
         )
-      } catch {
-        toast.error('Impossible de résoudre le remboursement')
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Impossible de résoudre')
       }
     })
   }
@@ -258,8 +346,9 @@ export function MonthClient({
       try {
         await unresolveExpectedRefund(formData)
         toast.info('Résolution annulée — la créance est de nouveau en attente')
-      } catch {
-        toast.error("Impossible d'annuler la résolution")
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Impossible d'annuler")
       }
     })
   }
@@ -393,12 +482,21 @@ export function MonthClient({
         </div>
       </section>
 
-      {/* Hint sur la sélection multi */}
-      <div className="mx-auto -mt-2 mb-2 hidden max-w-7xl px-6 text-xs text-muted-foreground lg:block lg:px-10">
-        💡 <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">Shift+clic</kbd> pour
-        sélectionner une plage,{' '}
-        <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">⌘ clic</kbd> pour
-        ajouter à la sélection
+      {/* Hint clavier */}
+      <div className="mx-auto -mt-2 mb-2 hidden max-w-7xl flex-wrap gap-x-4 gap-y-1 px-6 text-xs text-muted-foreground lg:flex lg:px-10">
+        <span>
+          💡 <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">J/K</kbd> ou{' '}
+          <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">↑↓</kbd> pour naviguer
+        </span>
+        <span>
+          <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">Enter</kbd> pour ouvrir
+        </span>
+        <span>
+          <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">Shift+clic</kbd> pour une plage
+        </span>
+        <span>
+          <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">⌘ clic</kbd> pour ajouter
+        </span>
       </div>
 
       {/* Table */}
@@ -423,19 +521,25 @@ export function MonthClient({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((t) => {
+                  {filtered.map((t, idx) => {
                     const refundPending =
                       t.annotation?.expected_refund_from && !t.annotation?.refund_resolved_at
                     const refundResolved = Boolean(t.annotation?.refund_resolved_at)
                     const isSelected = selectedIds.has(t.id)
                     const isValidated = !t.toProcess
+                    const isFocused = focusedIndex === idx
                     return (
                       <TableRow
                         key={t.id}
-                        onClick={(e) => handleRowClick(t, e)}
+                        ref={isFocused ? focusedRowRef : undefined}
+                        onClick={(e) => {
+                          handleRowClick(t, e)
+                          setFocusedIndex(idx)
+                        }}
                         data-selected={isSelected ? 'true' : undefined}
                         className={cn(
                           'cursor-pointer select-none border-l-2 transition',
+                          isFocused && 'outline outline-2 outline-primary outline-offset-[-2px]',
                           isSelected
                             ? 'border-l-foreground bg-muted/60'
                             : isValidated
@@ -544,7 +648,11 @@ export function MonthClient({
                 </SheetDescription>
               </SheetHeader>
 
-              <form action={handleSubmit} className="flex flex-col gap-6 px-4 py-4">
+              <form
+                action={(formData) => handleSubmit(formData, false)}
+                id="annotation-form"
+                className="flex flex-col gap-6 px-4 py-4"
+              >
                 <input type="hidden" name="transaction_id" value={selectedTx.id} />
                 <input type="hidden" name="account_id" value={accountId} />
 
@@ -651,16 +759,39 @@ export function MonthClient({
                   </div>
                 </div>
 
-                <SheetFooter>
-                  <Button type="submit" disabled={isPending}>
-                    {isPending ? 'Enregistrement…' : 'Enregistrer'}
-                  </Button>
+                <SheetFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => setSelectedTx(null)}
+                    className="sm:order-1"
                   >
                     Annuler
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={isPending}
+                    className="sm:order-2"
+                  >
+                    {isPending ? 'Enregistrement…' : 'Enregistrer'}
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => {
+                      const form = document.getElementById(
+                        'annotation-form',
+                      ) as HTMLFormElement | null
+                      if (form) {
+                        const formData = new FormData(form)
+                        handleSubmit(formData, true)
+                      }
+                    }}
+                    className="sm:order-3"
+                  >
+                    {isPending ? 'Enregistrement…' : 'Suivante'}
+                    <ArrowRightIcon className="size-4" />
                   </Button>
                 </SheetFooter>
               </form>
