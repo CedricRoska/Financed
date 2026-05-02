@@ -25,7 +25,8 @@
       "Bash(npx shadcn@latest add sheet button input label textarea card badge table separator radio-group --yes)",
       "Bash(rm tailwind.config.ts)",
       "Bash(npm uninstall *)",
-      "Bash(npx shadcn@latest add tabs select --yes)"
+      "Bash(npx shadcn@latest add tabs select --yes)",
+      "Bash(npx shadcn@latest add sonner --yes)"
     ]
   }
 }

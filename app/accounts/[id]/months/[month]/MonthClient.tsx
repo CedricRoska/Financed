@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { useTransition, useState, useMemo } from 'react'
+import { ArrowLeftIcon, LogOutIcon, SearchIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -27,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { DEFAULT_CATEGORY_SUGGESTIONS } from '@/lib/categories/defaults'
 import {
   resolveExpectedRefund,
@@ -123,19 +126,42 @@ export function MonthClient({
 
   function handleSubmit(formData: FormData) {
     startTransition(async () => {
-      await saveAnnotation(formData)
+      try {
+        await saveAnnotation(formData)
+        toast.success('Annotation enregistrée')
+      } catch {
+        // Server Action redirige normalement, donc l'erreur est rare ici
+        toast.error("Impossible d'enregistrer l'annotation")
+      }
     })
   }
 
   function handleResolve(formData: FormData) {
+    const kind = formData.get('kind')
     startTransition(async () => {
-      await resolveExpectedRefund(formData)
+      try {
+        await resolveExpectedRefund(formData)
+        toast.success(
+          kind === 'loss'
+            ? 'Créance passée en perte'
+            : kind === 'cash'
+              ? 'Remboursement en liquide enregistré'
+              : 'Remboursement par virement enregistré',
+        )
+      } catch {
+        toast.error('Impossible de résoudre le remboursement')
+      }
     })
   }
 
   function handleUnresolve(formData: FormData) {
     startTransition(async () => {
-      await unresolveExpectedRefund(formData)
+      try {
+        await unresolveExpectedRefund(formData)
+        toast.info('Résolution annulée — la créance est de nouveau en attente')
+      } catch {
+        toast.error("Impossible d'annuler la résolution")
+      }
     })
   }
 
@@ -151,15 +177,20 @@ export function MonthClient({
       <header className="flex items-center justify-between border-b bg-background px-6 py-4">
         <Link
           href={`/accounts/${accountId}`}
-          className="text-sm text-muted-foreground transition hover:text-foreground"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
         >
-          ← {accountName}
+          <ArrowLeftIcon className="size-4" />
+          {accountName}
         </Link>
-        <form action="/logout" method="POST">
-          <Button type="submit" variant="outline" size="sm">
-            Se déconnecter
-          </Button>
-        </form>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <form action="/logout" method="POST">
+            <Button type="submit" variant="outline" size="sm">
+              <LogOutIcon className="size-4" />
+              Se déconnecter
+            </Button>
+          </form>
+        </div>
       </header>
 
       {/* Title + stats */}
@@ -257,13 +288,16 @@ export function MonthClient({
             ))}
           </div>
 
-          <Input
-            type="search"
-            placeholder="Rechercher libellé ou catégorie…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full max-w-xs sm:ml-auto"
-          />
+          <div className="relative w-full max-w-xs sm:ml-auto">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Rechercher libellé ou catégorie…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
         </div>
       </section>
 

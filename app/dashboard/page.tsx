@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { LogOutIcon, SettingsIcon, WalletIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { createClient } from '@/lib/supabase/server'
 import { createAccount } from './actions'
 
@@ -52,13 +54,23 @@ export default async function DashboardPage({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between border-b bg-background px-6 py-4">
-        <div className="flex items-center gap-2">
+        <Link href="/dashboard" className="flex items-center gap-2">
+          <WalletIcon className="size-5" />
           <span className="text-lg font-semibold tracking-tight">Financed</span>
-        </div>
-        <div className="flex items-center gap-3">
+        </Link>
+        <div className="flex items-center gap-2">
           <span className="hidden text-xs text-muted-foreground sm:inline">{user.email}</span>
+          <Link
+            href="/settings"
+            aria-label="Paramètres"
+            className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+          >
+            <SettingsIcon className="size-4" />
+          </Link>
+          <ThemeToggle />
           <form action="/logout" method="POST">
             <Button type="submit" variant="outline" size="sm">
+              <LogOutIcon className="size-4" />
               Se déconnecter
             </Button>
           </form>

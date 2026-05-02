@@ -3,9 +3,11 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { use, useState } from 'react'
+import { ArrowLeftIcon, CheckCircle2Icon, FileUpIcon, LogOutIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ThemeToggle } from '@/components/theme-toggle'
 import {
   Table,
   TableBody,
@@ -96,15 +98,20 @@ export default function ImportPage({ params }: { params: Promise<{ id: string }>
       <header className="flex items-center justify-between border-b bg-background px-6 py-4">
         <Link
           href={`/accounts/${accountId}`}
-          className="text-sm text-muted-foreground transition hover:text-foreground"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
         >
-          ← Retour au compte
+          <ArrowLeftIcon className="size-4" />
+          Retour au compte
         </Link>
-        <form action="/logout" method="POST">
-          <Button type="submit" variant="outline" size="sm">
-            Se déconnecter
-          </Button>
-        </form>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <form action="/logout" method="POST">
+            <Button type="submit" variant="outline" size="sm">
+              <LogOutIcon className="size-4" />
+              Se déconnecter
+            </Button>
+          </form>
+        </div>
       </header>
 
       <main className="flex-1 px-6 py-10">
@@ -188,6 +195,7 @@ function UploadView({
           : 'border-border bg-muted/20'
       }`}
     >
+      <FileUpIcon className="mb-4 size-10 text-muted-foreground" />
       <p className="text-base font-medium">
         {isParsing ? 'Analyse du fichier…' : 'Glisse ton fichier CSV ici'}
       </p>
@@ -325,7 +333,8 @@ function SuccessView({
   return (
     <Card className="border-emerald-200 bg-emerald-50/50">
       <CardContent className="px-6 py-12 text-center">
-        <p className="text-base font-medium text-emerald-900">Import terminé ✅</p>
+        <CheckCircle2Icon className="mx-auto mb-3 size-12 text-emerald-600" />
+        <p className="text-base font-medium text-emerald-900">Import terminé</p>
         <p className="mt-2 text-sm text-emerald-800">
           {inserted} transaction{inserted > 1 ? 's' : ''} importée{inserted > 1 ? 's' : ''}
           {duplicates > 0

@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { ArrowLeftIcon, LogOutIcon, UploadIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { groupTransactionsByMonth } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionValidated } from '@/lib/transactions/validation'
@@ -69,19 +71,22 @@ export default async function AccountDetailPage({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between border-b bg-background px-6 py-4">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/dashboard"
-            className="text-sm text-muted-foreground transition hover:text-foreground"
-          >
-            ← Dashboard
-          </Link>
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
+        >
+          <ArrowLeftIcon className="size-4" />
+          Dashboard
+        </Link>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <form action="/logout" method="POST">
+            <Button type="submit" variant="outline" size="sm">
+              <LogOutIcon className="size-4" />
+              Se déconnecter
+            </Button>
+          </form>
         </div>
-        <form action="/logout" method="POST">
-          <Button type="submit" variant="outline" size="sm">
-            Se déconnecter
-          </Button>
-        </form>
       </header>
 
       <section className="border-b bg-muted/20 px-6 py-8">
@@ -107,6 +112,7 @@ export default async function AccountDetailPage({
             href={`/accounts/${account.id}/import`}
             className={buttonVariants()}
           >
+            <UploadIcon className="size-4" />
             Importer un relevé
           </Link>
         </div>
