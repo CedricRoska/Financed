@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { AuthenticatedShell } from '@/components/authenticated-shell'
+import { AccountActions } from './AccountActions'
 import { groupTransactionsByMonth } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionValidated } from '@/lib/transactions/validation'
@@ -89,10 +90,13 @@ export default async function AccountDetailPage({
             </p>
           </div>
 
-          <Link href={`/accounts/${account.id}/import`} className={buttonVariants()}>
-            <UploadIcon className="size-4" />
-            Importer un relevé
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href={`/accounts/${account.id}/import`} className={buttonVariants()}>
+              <UploadIcon className="size-4" />
+              Importer un relevé
+            </Link>
+            <AccountActions accountId={account.id} accountName={account.name} />
+          </div>
         </div>
 
         {enriched.length > 0 ? (

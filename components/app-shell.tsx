@@ -19,6 +19,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { SearchCommand } from '@/components/search-command'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { cn } from '@/lib/utils'
 
@@ -123,6 +124,11 @@ function SidebarContent({
         >
           <XIcon className="size-5 text-muted-foreground" />
         </button>
+      </div>
+
+      {/* Search */}
+      <div className="border-b px-3 py-3">
+        <SearchCommand />
       </div>
 
       {/* Primary nav */}
