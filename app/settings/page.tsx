@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import { AuthenticatedShell } from '@/components/authenticated-shell'
 import { createClient } from '@/lib/supabase/server'
+import { CategoriesSection } from './CategoriesSection'
+import { getUserCategories } from './categories-actions'
 import { SettingsClient } from './SettingsClient'
 
 export default async function SettingsPage() {
@@ -13,6 +15,8 @@ export default async function SettingsPage() {
     redirect('/login')
   }
 
+  const categories = await getUserCategories()
+
   return (
     <AuthenticatedShell>
       <div className="px-6 py-10 lg:px-10">
@@ -20,10 +24,11 @@ export default async function SettingsPage() {
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Paramètres</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Gère ton compte, tes données personnelles, et la suppression définitive.
+              Gère ton compte, tes catégories, tes données personnelles.
             </p>
           </div>
 
+          <CategoriesSection categories={categories} />
           <SettingsClient email={user.email ?? ''} />
         </div>
       </div>

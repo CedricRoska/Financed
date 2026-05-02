@@ -2,11 +2,19 @@
 
 import Link from 'next/link'
 import { useTransition, useState, useMemo } from 'react'
-import { ArrowLeftIcon, SearchIcon } from 'lucide-react'
+import { ArrowLeftIcon, CheckIcon, SearchIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -29,7 +37,9 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { CategoryBreakdown } from './CategoryBreakdown'
+import { bulkApplyAnnotation } from './bulk-actions'
 import { DEFAULT_CATEGORY_SUGGESTIONS } from '@/lib/categories/defaults'
 import {
   resolveExpectedRefund,
@@ -87,17 +97,24 @@ export function MonthClient({
   isHybrid,
   monthLabel,
   transactions,
+  knownCategories,
 }: {
   accountId: string
   accountName: string
   isHybrid: boolean
   monthLabel: string
   transactions: EnrichedTransaction[]
+  knownCategories: string[]
 }) {
   const [selectedTx, setSelectedTx] = useState<EnrichedTransaction | null>(null)
   const [tab, setTab] = useState<'all' | 'pro' | 'perso'>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [lastClickedId, setLastClickedId] = useState<string | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkCategory, setBulkCategory] = useState('')
+  const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | 'unset' | 'keep'>('keep')
   const [isPending, startTransition] = useTransition()
 
   const filtered = useMemo(() => {
@@ -115,6 +132,88 @@ export function MonthClient({
       return true
     })
   }, [transactions, tab, statusFilter, search])
+
+  // Datalist : suggestions par défaut + catégories que l'utilisateur a déjà utilisées
+  const allCategorySuggestions = useMemo(() => {
+    const set = new Set<string>(DEFAULT_CATEGORY_SUGGESTIONS)
+    for (const c of knownCategories) set.add(c)
+    return [...set].sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [knownCategories])
+
+  // Gère Shift+Click pour sélection en intervalle, click simple pour ouvrir Sheet
+  function handleRowClick(t: EnrichedTransaction, e: React.MouseEvent) {
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      e.preventDefault()
+      const next = new Set(selectedIds)
+
+      if (e.shiftKey && lastClickedId && lastClickedId !== t.id) {
+        // Range select dans la liste filtrée actuelle
+        const startIdx = filtered.findIndex((row) => row.id === lastClickedId)
+        const endIdx = filtered.findIndex((row) => row.id === t.id)
+        if (startIdx !== -1 && endIdx !== -1) {
+          const [a, b] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx]
+          for (let i = a; i <= b; i++) {
+            const row = filtered[i]
+            if (row) next.add(row.id)
+          }
+        }
+      } else {
+        // Cmd/Ctrl+Click ou Shift+Click sans précédent : toggle individuel
+        if (next.has(t.id)) next.delete(t.id)
+        else next.add(t.id)
+      }
+
+      setSelectedIds(next)
+      setLastClickedId(t.id)
+      return
+    }
+
+    // Click simple : ouvre la Sheet d'édition
+    setSelectedTx(t)
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+    setLastClickedId(null)
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(filtered.map((t) => t.id)))
+  }
+
+  function handleBulkApply() {
+    if (selectedIds.size === 0) return
+    const ids = Array.from(selectedIds)
+    const trimmedCategory = bulkCategory.trim()
+    const proPersoValue =
+      bulkProPerso === 'keep'
+        ? undefined
+        : bulkProPerso === 'unset'
+          ? 'unset'
+          : bulkProPerso
+
+    startTransition(async () => {
+      try {
+        const result = await bulkApplyAnnotation({
+          transactionIds: ids,
+          accountId,
+          ...(trimmedCategory !== ''
+            ? { category: trimmedCategory }
+            : bulkProPerso === 'keep'
+              ? {}
+              : {}),
+          ...(proPersoValue !== undefined ? { proPerso: proPersoValue } : {}),
+        })
+        toast.success(`${result.updated} transaction${result.updated > 1 ? 's' : ''} mises à jour`)
+        clearSelection()
+        setBulkOpen(false)
+        setBulkCategory('')
+        setBulkProPerso('keep')
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Erreur bulk update')
+      }
+    })
+  }
 
   const stats = useMemo(() => {
     const total = filtered.reduce((sum, t) => sum + t.amount, 0)
@@ -294,8 +393,16 @@ export function MonthClient({
         </div>
       </section>
 
+      {/* Hint sur la sélection multi */}
+      <div className="mx-auto -mt-2 mb-2 hidden max-w-7xl px-6 text-xs text-muted-foreground lg:block lg:px-10">
+        💡 <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">Shift+clic</kbd> pour
+        sélectionner une plage,{' '}
+        <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono">⌘ clic</kbd> pour
+        ajouter à la sélection
+      </div>
+
       {/* Table */}
-      <main className="flex-1 px-6 pb-10 lg:px-10">
+      <main className="flex-1 px-6 pb-32 lg:px-10">
         <div className="mx-auto flex max-w-7xl flex-col">
           {filtered.length === 0 ? (
             <Card>
@@ -320,11 +427,21 @@ export function MonthClient({
                     const refundPending =
                       t.annotation?.expected_refund_from && !t.annotation?.refund_resolved_at
                     const refundResolved = Boolean(t.annotation?.refund_resolved_at)
+                    const isSelected = selectedIds.has(t.id)
+                    const isValidated = !t.toProcess
                     return (
                       <TableRow
                         key={t.id}
-                        onClick={() => setSelectedTx(t)}
-                        className="cursor-pointer"
+                        onClick={(e) => handleRowClick(t, e)}
+                        data-selected={isSelected ? 'true' : undefined}
+                        className={cn(
+                          'cursor-pointer select-none border-l-2 transition',
+                          isSelected
+                            ? 'border-l-foreground bg-muted/60'
+                            : isValidated
+                              ? 'border-l-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-950/10'
+                              : 'border-l-transparent',
+                        )}
                       >
                         <TableCell className="text-muted-foreground">
                           {dateFormatter.format(new Date(t.op_date))}
@@ -442,7 +559,7 @@ export function MonthClient({
                     placeholder="Ex. Courses, Loyer, Salaire..."
                   />
                   <datalist id="category-suggestions">
-                    {DEFAULT_CATEGORY_SUGGESTIONS.map((suggestion) => (
+                    {allCategorySuggestions.map((suggestion) => (
                       <option key={suggestion} value={suggestion} />
                     ))}
                   </datalist>
@@ -650,6 +767,127 @@ export function MonthClient({
           ) : null}
         </SheetContent>
       </Sheet>
+
+      {/* Floating bulk action bar */}
+      {selectedIds.size > 0 ? (
+        <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-6">
+          <div className="flex items-center gap-3 rounded-xl border bg-background px-4 py-2.5 shadow-lg">
+            <span className="text-sm font-medium">
+              {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
+            </span>
+            <Separator orientation="vertical" className="h-6" />
+            <Button size="sm" onClick={() => setBulkOpen(true)}>
+              <CheckIcon className="size-4" />
+              Catégoriser ensemble
+            </Button>
+            <Button size="sm" variant="ghost" onClick={selectAll}>
+              Tout sélectionner ({filtered.length})
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={clearSelection}
+              aria-label="Annuler la sélection"
+            >
+              <XIcon className="size-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Bulk apply dialog */}
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Catégoriser {selectedIds.size} transaction{selectedIds.size > 1 ? 's' : ''}
+            </DialogTitle>
+            <DialogDescription>
+              La catégorie et le pro/perso seront appliqués aux lignes sélectionnées. Les
+              autres champs (commentaire, remboursement attendu) restent inchangés.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bulk-category">Catégorie</Label>
+              <Input
+                id="bulk-category"
+                list="bulk-category-suggestions"
+                value={bulkCategory}
+                onChange={(e) => setBulkCategory(e.target.value)}
+                maxLength={100}
+                placeholder="Ex. Courses"
+                autoFocus
+              />
+              <datalist id="bulk-category-suggestions">
+                {allCategorySuggestions.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">
+                Vide = ne pas modifier la catégorie existante.
+              </p>
+            </div>
+
+            {isHybrid ? (
+              <div className="flex flex-col gap-2">
+                <Label>Pro / Perso</Label>
+                <RadioGroup
+                  value={bulkProPerso}
+                  onValueChange={(v) =>
+                    setBulkProPerso(v as 'pro' | 'perso' | 'unset' | 'keep')
+                  }
+                  className="flex flex-wrap gap-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="keep" id="bulk-keep" />
+                    <Label htmlFor="bulk-keep" className="cursor-pointer font-normal">
+                      Ne pas modifier
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="pro" id="bulk-pro" />
+                    <Label htmlFor="bulk-pro" className="cursor-pointer font-normal">
+                      Pro
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="perso" id="bulk-perso" />
+                    <Label htmlFor="bulk-perso" className="cursor-pointer font-normal">
+                      Perso
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="unset" id="bulk-unset" />
+                    <Label htmlFor="bulk-unset" className="cursor-pointer font-normal">
+                      Non classé
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBulkOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              type="button"
+              onClick={handleBulkApply}
+              disabled={
+                isPending ||
+                (bulkCategory.trim() === '' && bulkProPerso === 'keep')
+              }
+            >
+              {isPending
+                ? 'Application…'
+                : `Appliquer à ${selectedIds.size} ligne${selectedIds.size > 1 ? 's' : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

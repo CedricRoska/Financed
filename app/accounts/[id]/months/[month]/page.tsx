@@ -3,6 +3,7 @@ import { AuthenticatedShell } from '@/components/authenticated-shell'
 import { formatMonthLabelFR, parseMonthSlug } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionToProcess } from '@/lib/transactions/validation'
+import { getUserCategories } from '@/app/settings/categories-actions'
 import { MonthClient, type AnnotationLite, type EnrichedTransaction } from './MonthClient'
 
 function pickAnnotation(raw: unknown): AnnotationLite | null {
@@ -63,6 +64,9 @@ export default async function MonthDetailPage({
     }
   })
 
+  const userCategories = await getUserCategories()
+  const knownCategories = userCategories.map((c) => c.name)
+
   return (
     <AuthenticatedShell>
       <MonthClient
@@ -71,6 +75,7 @@ export default async function MonthDetailPage({
         isHybrid={account.is_hybrid}
         monthLabel={formatMonthLabelFR(monthSlug)}
         transactions={enriched}
+        knownCategories={knownCategories}
       />
     </AuthenticatedShell>
   )
