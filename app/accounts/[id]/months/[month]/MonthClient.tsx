@@ -16,6 +16,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Separator } from '@/components/ui/separator'
 import {
   Table,
   TableBody,
@@ -27,7 +28,11 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_CATEGORY_SUGGESTIONS } from '@/lib/categories/defaults'
-import { saveAnnotation } from '@/app/accounts/[id]/transactions/[tid]/edit/actions'
+import {
+  resolveExpectedRefund,
+  saveAnnotation,
+  unresolveExpectedRefund,
+} from '@/app/accounts/[id]/transactions/[tid]/edit/actions'
 
 const amountFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
@@ -39,12 +44,27 @@ const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
   month: 'short',
 })
 
+const dateTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+})
+
+const RESOLVE_KIND_LABEL: Record<string, string> = {
+  cash: 'Reçu en liquide',
+  wire: 'Reçu par virement',
+  loss: 'Passé en perte',
+}
+
 export type AnnotationLite = {
   category: string | null
   comment: string | null
   pro_perso: 'pro' | 'perso' | null
   expected_refund_from: string | null
   expected_refund_label: string | null
+  refund_resolved_at: string | null
+  refund_resolved_kind: 'cash' | 'wire' | 'loss' | null
+  refund_resolved_note: string | null
 }
 
 export type EnrichedTransaction = {
@@ -53,10 +73,10 @@ export type EnrichedTransaction = {
   amount: number
   raw_label: string
   annotation: AnnotationLite | null
-  unreconciled: boolean
+  toProcess: boolean
 }
 
-type StatusFilter = 'all' | 'unreconciled' | 'reconciled'
+type StatusFilter = 'all' | 'toProcess' | 'validated'
 
 export function MonthClient({
   accountId,
@@ -81,8 +101,8 @@ export function MonthClient({
     return transactions.filter((t) => {
       if (tab === 'pro' && t.annotation?.pro_perso !== 'pro') return false
       if (tab === 'perso' && t.annotation?.pro_perso !== 'perso') return false
-      if (statusFilter === 'unreconciled' && !t.unreconciled) return false
-      if (statusFilter === 'reconciled' && t.unreconciled) return false
+      if (statusFilter === 'toProcess' && !t.toProcess) return false
+      if (statusFilter === 'validated' && t.toProcess) return false
       if (search.trim() !== '') {
         const q = search.trim().toLowerCase()
         const matchLabel = t.raw_label.toLowerCase().includes(q)
@@ -97,8 +117,8 @@ export function MonthClient({
     const total = filtered.reduce((sum, t) => sum + t.amount, 0)
     const income = filtered.filter((t) => t.amount > 0).reduce((sum, t) => sum + t.amount, 0)
     const expenses = filtered.filter((t) => t.amount < 0).reduce((sum, t) => sum + t.amount, 0)
-    const unreconciled = filtered.filter((t) => t.unreconciled).length
-    return { total, income, expenses, unreconciled, count: filtered.length }
+    const toProcess = filtered.filter((t) => t.toProcess).length
+    return { total, income, expenses, toProcess, count: filtered.length }
   }, [filtered])
 
   function handleSubmit(formData: FormData) {
@@ -106,6 +126,24 @@ export function MonthClient({
       await saveAnnotation(formData)
     })
   }
+
+  function handleResolve(formData: FormData) {
+    startTransition(async () => {
+      await resolveExpectedRefund(formData)
+    })
+  }
+
+  function handleUnresolve(formData: FormData) {
+    startTransition(async () => {
+      await unresolveExpectedRefund(formData)
+    })
+  }
+
+  const hasUnresolvedRefund =
+    selectedTx?.annotation?.expected_refund_from &&
+    !selectedTx?.annotation?.refund_resolved_at
+
+  const hasResolvedRefund = Boolean(selectedTx?.annotation?.refund_resolved_at)
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -149,13 +187,10 @@ export function MonthClient({
             </div>
           </div>
 
-          {/* Stats */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Recettes
-                </p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Recettes</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums text-emerald-700">
                   {amountFormatter.format(stats.income)}
                 </p>
@@ -163,9 +198,7 @@ export function MonthClient({
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Dépenses
-                </p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Dépenses</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums">
                   {amountFormatter.format(stats.expenses)}
                 </p>
@@ -181,15 +214,13 @@ export function MonthClient({
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Non lettrées
-                </p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">À traiter</p>
                 <p
                   className={`mt-1 text-xl font-semibold tabular-nums ${
-                    stats.unreconciled > 0 ? 'text-amber-700' : 'text-emerald-700'
+                    stats.toProcess > 0 ? 'text-amber-700' : 'text-emerald-700'
                   }`}
                 >
-                  {stats.unreconciled}
+                  {stats.toProcess}
                 </p>
               </CardContent>
             </Card>
@@ -211,7 +242,7 @@ export function MonthClient({
           ) : null}
 
           <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
-            {(['all', 'unreconciled', 'reconciled'] as const).map((s) => (
+            {(['all', 'toProcess', 'validated'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
@@ -221,7 +252,7 @@ export function MonthClient({
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {s === 'all' ? 'Toutes' : s === 'unreconciled' ? 'Non lettrées' : 'Lettrées'}
+                {s === 'all' ? 'Toutes' : s === 'toProcess' ? 'À traiter' : 'Validées'}
               </button>
             ))}
           </div>
@@ -258,71 +289,89 @@ export function MonthClient({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((t) => (
-                    <TableRow
-                      key={t.id}
-                      onClick={() => setSelectedTx(t)}
-                      className="cursor-pointer"
-                    >
-                      <TableCell className="text-muted-foreground">
-                        {dateFormatter.format(new Date(t.op_date))}
-                      </TableCell>
-                      <TableCell className="font-medium">{t.raw_label}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {t.annotation?.category ? (
-                            <Badge variant="secondary">{t.annotation.category}</Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                          {t.annotation?.pro_perso ? (
-                            <Badge
-                              variant="outline"
-                              className={
-                                t.annotation.pro_perso === 'pro'
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                  : 'border-blue-200 bg-blue-50 text-blue-700'
-                              }
-                            >
-                              {t.annotation.pro_perso === 'pro' ? 'Pro' : 'Perso'}
-                            </Badge>
-                          ) : null}
-                          {t.annotation?.expected_refund_from ? (
-                            <Badge
-                              variant="outline"
-                              className="border-amber-200 bg-amber-50 text-amber-800"
-                            >
-                              ↩ {t.annotation.expected_refund_from}
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className={`text-right tabular-nums ${
-                          t.amount >= 0 ? 'font-medium text-emerald-700' : ''
-                        }`}
+                  {filtered.map((t) => {
+                    const refundPending =
+                      t.annotation?.expected_refund_from && !t.annotation?.refund_resolved_at
+                    const refundResolved = Boolean(t.annotation?.refund_resolved_at)
+                    return (
+                      <TableRow
+                        key={t.id}
+                        onClick={() => setSelectedTx(t)}
+                        className="cursor-pointer"
                       >
-                        {amountFormatter.format(t.amount)}
-                      </TableCell>
-                      <TableCell>
-                        {t.unreconciled ? (
-                          <Badge
-                            variant="outline"
-                            className="border-amber-200 bg-amber-50 text-amber-700"
-                          >
-                            Non lettrée
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-200 bg-emerald-50 text-emerald-700"
-                          >
-                            Lettrée
-                          </Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        <TableCell className="text-muted-foreground">
+                          {dateFormatter.format(new Date(t.op_date))}
+                        </TableCell>
+                        <TableCell className="font-medium">{t.raw_label}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {t.annotation?.category ? (
+                              <Badge variant="secondary">{t.annotation.category}</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                            {t.annotation?.pro_perso ? (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  t.annotation.pro_perso === 'pro'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : 'border-blue-200 bg-blue-50 text-blue-700'
+                                }
+                              >
+                                {t.annotation.pro_perso === 'pro' ? 'Pro' : 'Perso'}
+                              </Badge>
+                            ) : null}
+                            {refundPending ? (
+                              <Badge
+                                variant="outline"
+                                className="border-amber-200 bg-amber-50 text-amber-800"
+                              >
+                                ↩ {t.annotation?.expected_refund_from} en attente
+                              </Badge>
+                            ) : null}
+                            {refundResolved ? (
+                              <Badge
+                                variant="outline"
+                                className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                              >
+                                ✓{' '}
+                                {t.annotation?.refund_resolved_kind === 'loss'
+                                  ? 'Perdu'
+                                  : t.annotation?.refund_resolved_kind === 'cash'
+                                    ? 'Cash'
+                                    : 'Remboursé'}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell
+                          className={`text-right tabular-nums ${
+                            t.amount >= 0 ? 'font-medium text-emerald-700' : ''
+                          }`}
+                        >
+                          {amountFormatter.format(t.amount)}
+                        </TableCell>
+                        <TableCell>
+                          {t.toProcess ? (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-200 bg-amber-50 text-amber-700"
+                            >
+                              À traiter
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                            >
+                              Validée
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </Card>
@@ -427,8 +476,8 @@ export function MonthClient({
                 <div className="rounded-xl border bg-muted/30 p-4">
                   <p className="text-sm font-medium">Quelqu&apos;un me doit</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Si tu attends un remboursement, indique-le. La transaction restera comptée
-                    comme non lettrée jusqu&apos;à réception.
+                    Si tu attends un remboursement, indique-le. La transaction restera à traiter
+                    jusqu&apos;à ce que tu marques le remboursement résolu (étape suivante).
                   </p>
                   <div className="mt-3 flex flex-col gap-3">
                     <div className="flex flex-col gap-1.5">
@@ -471,6 +520,105 @@ export function MonthClient({
                   </Button>
                 </SheetFooter>
               </form>
+
+              {/* Section résolution remboursement */}
+              {hasUnresolvedRefund || hasResolvedRefund ? (
+                <>
+                  <Separator />
+                  <div className="px-4 py-4">
+                    {hasUnresolvedRefund ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm font-medium text-amber-900">
+                          Marquer le remboursement comme résolu
+                        </p>
+                        <p className="mt-1 text-xs text-amber-800">
+                          {selectedTx.annotation?.expected_refund_from} doit te rembourser
+                          {selectedTx.annotation?.expected_refund_label
+                            ? ` pour « ${selectedTx.annotation.expected_refund_label} »`
+                            : ''}
+                          .
+                        </p>
+                        <form action={handleResolve} className="mt-3 flex flex-col gap-3">
+                          <input type="hidden" name="transaction_id" value={selectedTx.id} />
+                          <input type="hidden" name="account_id" value={accountId} />
+                          <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="resolve-note" className="text-xs text-amber-900">
+                              Note <span className="text-amber-700">(optionnel)</span>
+                            </Label>
+                            <Input
+                              id="resolve-note"
+                              name="note"
+                              maxLength={300}
+                              placeholder="Ex. Reçu en main propre le 12/04"
+                              className="bg-background"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="submit"
+                              name="kind"
+                              value="cash"
+                              disabled={isPending}
+                              variant="default"
+                            >
+                              Reçu en liquide
+                            </Button>
+                            <Button
+                              type="submit"
+                              name="kind"
+                              value="wire"
+                              disabled={isPending}
+                              variant="default"
+                            >
+                              Reçu par virement
+                            </Button>
+                            <Button
+                              type="submit"
+                              name="kind"
+                              value="loss"
+                              disabled={isPending}
+                              variant="outline"
+                            >
+                              Passer en perte
+                            </Button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : null}
+
+                    {hasResolvedRefund ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                        <p className="text-sm font-medium text-emerald-900">
+                          Remboursement résolu ✓
+                        </p>
+                        <p className="mt-1 text-xs text-emerald-800">
+                          {RESOLVE_KIND_LABEL[selectedTx.annotation?.refund_resolved_kind ?? 'cash']}
+                          {selectedTx.annotation?.refund_resolved_at
+                            ? ` · ${dateTimeFormatter.format(new Date(selectedTx.annotation.refund_resolved_at))}`
+                            : ''}
+                        </p>
+                        {selectedTx.annotation?.refund_resolved_note ? (
+                          <p className="mt-1 text-xs italic text-emerald-800">
+                            « {selectedTx.annotation.refund_resolved_note} »
+                          </p>
+                        ) : null}
+                        <form action={handleUnresolve} className="mt-3">
+                          <input type="hidden" name="transaction_id" value={selectedTx.id} />
+                          <input type="hidden" name="account_id" value={accountId} />
+                          <Button
+                            type="submit"
+                            variant="outline"
+                            size="sm"
+                            disabled={isPending}
+                          >
+                            Annuler la résolution
+                          </Button>
+                        </form>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
             </>
           ) : null}
         </SheetContent>

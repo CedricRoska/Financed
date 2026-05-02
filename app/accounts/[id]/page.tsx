@@ -5,6 +5,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { groupTransactionsByMonth } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
+import { isTransactionValidated } from '@/lib/transactions/validation'
 
 const amountFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
@@ -14,19 +15,13 @@ const amountFormatter = new Intl.NumberFormat('fr-FR', {
 type AnnotationLite = {
   category: string | null
   expected_refund_from: string | null
+  refund_resolved_at: string | null
 }
 
 function pickAnnotation(raw: unknown): AnnotationLite | null {
   if (!raw) return null
   if (Array.isArray(raw)) return (raw[0] ?? null) as AnnotationLite | null
   return raw as AnnotationLite
-}
-
-function isUnreconciled(annotation: AnnotationLite | null): boolean {
-  if (!annotation) return true
-  if (annotation.expected_refund_from && annotation.expected_refund_from.trim() !== '') return true
-  if (!annotation.category || annotation.category.trim() === '') return true
-  return false
 }
 
 export default async function AccountDetailPage({
@@ -49,7 +44,9 @@ export default async function AccountDetailPage({
 
   const { data: transactions } = await supabase
     .from('transactions')
-    .select('op_date, amount, transaction_annotations(category, expected_refund_from)')
+    .select(
+      'op_date, amount, transaction_annotations(category, expected_refund_from, refund_resolved_at)',
+    )
     .eq('account_id', id)
     .order('op_date', { ascending: false })
 
@@ -58,14 +55,14 @@ export default async function AccountDetailPage({
     return {
       op_date: t.op_date,
       amount: Number(t.amount),
-      hasAnnotation: !isUnreconciled(annotation),
+      hasAnnotation: isTransactionValidated(annotation),
     }
   })
 
   const months = groupTransactionsByMonth(enriched)
 
   const totalBalance = enriched.reduce((sum, t) => sum + t.amount, 0)
-  const totalUnreconciled = enriched.filter((t) => !t.hasAnnotation).length
+  const totalToProcess = enriched.filter((t) => !t.hasAnnotation).length
   const totalIncome = enriched.filter((t) => t.amount > 0).reduce((sum, t) => sum + t.amount, 0)
   const totalExpenses = enriched.filter((t) => t.amount < 0).reduce((sum, t) => sum + t.amount, 0)
 
@@ -154,14 +151,14 @@ export default async function AccountDetailPage({
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Non lettrées
+                  À traiter
                 </p>
                 <p
                   className={`mt-1 text-2xl font-semibold tabular-nums ${
-                    totalUnreconciled > 0 ? 'text-amber-700' : 'text-emerald-700'
+                    totalToProcess > 0 ? 'text-amber-700' : 'text-emerald-700'
                   }`}
                 >
-                  {totalUnreconciled}
+                  {totalToProcess}
                 </p>
               </CardContent>
             </Card>
@@ -186,8 +183,8 @@ export default async function AccountDetailPage({
             <div className="flex flex-col gap-2">
               {months.map((m) => {
                 const isPositive = m.score >= 0
-                const reconciledRatio =
-                  m.count > 0 ? Math.round(((m.count - m.unreconciled) / m.count) * 100) : 0
+                const validatedRatio =
+                  m.count > 0 ? Math.round(((m.count - m.toProcess) / m.count) * 100) : 0
                 return (
                   <Link key={m.monthSlug} href={`/accounts/${account.id}/months/${m.monthSlug}`}>
                     <Card className="transition hover:border-foreground/30 hover:shadow-sm">
@@ -203,18 +200,18 @@ export default async function AccountDetailPage({
                             <p className="text-base font-semibold">{m.label}</p>
                             <p className="mt-0.5 text-xs text-muted-foreground">
                               {m.count} transaction{m.count > 1 ? 's' : ''}
-                              {m.unreconciled > 0 ? (
+                              {m.toProcess > 0 ? (
                                 <>
                                   {' · '}
                                   <span className="font-medium text-amber-700">
-                                    {m.unreconciled} non lettrée{m.unreconciled > 1 ? 's' : ''}
+                                    {m.toProcess} à traiter
                                   </span>
                                 </>
                               ) : (
                                 <>
                                   {' · '}
                                   <span className="font-medium text-emerald-700">
-                                    Tout lettré
+                                    Tout validé
                                   </span>
                                 </>
                               )}
@@ -225,10 +222,10 @@ export default async function AccountDetailPage({
                         <div className="hidden items-center gap-4 sm:flex">
                           <div className="flex flex-col items-end">
                             <span className="text-xs uppercase tracking-wider text-muted-foreground">
-                              Lettrage
+                              Validé
                             </span>
                             <span className="text-sm font-medium tabular-nums">
-                              {reconciledRatio}%
+                              {validatedRatio}%
                             </span>
                           </div>
                           <span

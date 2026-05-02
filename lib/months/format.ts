@@ -40,15 +40,15 @@ export type MonthSummary = {
   monthSlug: string
   label: string
   count: number
-  unreconciled: number
+  /** Compteur des transactions "à traiter" (= non validées par l'utilisateur). */
+  toProcess: number
   score: number
 }
 
 type MinTransactionForGrouping = {
   op_date: string
   amount: number
-  // Présence de l'annotation détermine si la transaction est "lettrée"/catégorisée.
-  // En V1 (Goal 4c), aucune annotation existe → toutes sont unreconciled.
+  /** True si la transaction est "validée" (catégorisée + remboursement résolu si applicable). */
   hasAnnotation?: boolean
 }
 
@@ -63,13 +63,13 @@ export function groupTransactionsByMonth(
     if (existing) {
       existing.count += 1
       existing.score += t.amount
-      if (!t.hasAnnotation) existing.unreconciled += 1
+      if (!t.hasAnnotation) existing.toProcess += 1
     } else {
       map.set(monthSlug, {
         monthSlug,
         label: formatMonthLabelFR(monthSlug),
         count: 1,
-        unreconciled: t.hasAnnotation ? 0 : 1,
+        toProcess: t.hasAnnotation ? 0 : 1,
         score: t.amount,
       })
     }

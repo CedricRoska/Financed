@@ -1,19 +1,13 @@
 import { redirect } from 'next/navigation'
 import { formatMonthLabelFR, parseMonthSlug } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
+import { isTransactionToProcess } from '@/lib/transactions/validation'
 import { MonthClient, type AnnotationLite, type EnrichedTransaction } from './MonthClient'
 
 function pickAnnotation(raw: unknown): AnnotationLite | null {
   if (!raw) return null
   if (Array.isArray(raw)) return (raw[0] ?? null) as AnnotationLite | null
   return raw as AnnotationLite
-}
-
-function isUnreconciled(annotation: AnnotationLite | null): boolean {
-  if (!annotation) return true
-  if (annotation.expected_refund_from && annotation.expected_refund_from.trim() !== '') return true
-  if (!annotation.category || annotation.category.trim() === '') return true
-  return false
 }
 
 export default async function MonthDetailPage({
@@ -48,7 +42,7 @@ export default async function MonthDetailPage({
   const { data: transactions } = await supabase
     .from('transactions')
     .select(
-      'id, op_date, amount, raw_label, transaction_annotations(category, comment, pro_perso, expected_refund_from, expected_refund_label)',
+      'id, op_date, amount, raw_label, transaction_annotations(category, comment, pro_perso, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note)',
     )
     .eq('account_id', accountId)
     .gte('op_date', startDate)
@@ -64,7 +58,7 @@ export default async function MonthDetailPage({
       amount: Number(t.amount),
       raw_label: t.raw_label,
       annotation,
-      unreconciled: isUnreconciled(annotation),
+      toProcess: isTransactionToProcess(annotation),
     }
   })
 

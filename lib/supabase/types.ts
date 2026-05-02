@@ -104,6 +104,9 @@ export type Database = {
           pro_perso: 'pro' | 'perso' | null
           expected_refund_from: string | null
           expected_refund_label: string | null
+          refund_resolved_at: string | null
+          refund_resolved_kind: 'cash' | 'wire' | 'loss' | null
+          refund_resolved_note: string | null
           created_at: string
           updated_at: string
         }
@@ -116,6 +119,9 @@ export type Database = {
           pro_perso?: 'pro' | 'perso' | null
           expected_refund_from?: string | null
           expected_refund_label?: string | null
+          refund_resolved_at?: string | null
+          refund_resolved_kind?: 'cash' | 'wire' | 'loss' | null
+          refund_resolved_note?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -128,6 +134,9 @@ export type Database = {
           pro_perso?: 'pro' | 'perso' | null
           expected_refund_from?: string | null
           expected_refund_label?: string | null
+          refund_resolved_at?: string | null
+          refund_resolved_kind?: 'cash' | 'wire' | 'loss' | null
+          refund_resolved_note?: string | null
           created_at?: string
           updated_at?: string
         }
