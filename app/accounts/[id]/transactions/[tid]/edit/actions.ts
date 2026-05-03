@@ -62,6 +62,34 @@ export async function saveAnnotation(formData: FormData): Promise<void> {
   const subcategory =
     category && subcategoryRaw && subcategoryRaw.length >= 2 ? subcategoryRaw : null
 
+  // expected_refund_amount peut arriver en € absolus ou en %, selon l'unité
+  // choisie côté UI. On stocke toujours en € absolus.
+  const expectedRefundFrom = emptyToNull(formData.get('expected_refund_from'))
+  const refundAmountRaw = formData.get('expected_refund_amount')
+  const refundAmountUnit = formData.get('expected_refund_amount_unit')
+  let expectedRefundAmount: number | null = null
+  if (
+    expectedRefundFrom &&
+    typeof refundAmountRaw === 'string' &&
+    refundAmountRaw.trim() !== ''
+  ) {
+    const numeric = Number(refundAmountRaw.replace(',', '.'))
+    if (!Number.isNaN(numeric) && numeric > 0) {
+      if (refundAmountUnit === 'percent') {
+        const expenseAmountRaw = formData.get('expense_amount')
+        const expenseAmount =
+          typeof expenseAmountRaw === 'string'
+            ? Math.abs(Number(expenseAmountRaw))
+            : 0
+        if (expenseAmount > 0) {
+          expectedRefundAmount = Math.round((numeric / 100) * expenseAmount * 100) / 100
+        }
+      } else {
+        expectedRefundAmount = Math.round(numeric * 100) / 100
+      }
+    }
+  }
+
   const { error } = await supabase.from('transaction_annotations').upsert(
     {
       transaction_id: transactionId,
@@ -70,8 +98,9 @@ export async function saveAnnotation(formData: FormData): Promise<void> {
       subcategory,
       comment: emptyToNull(formData.get('comment')),
       pro_perso: proPerso,
-      expected_refund_from: emptyToNull(formData.get('expected_refund_from')),
+      expected_refund_from: expectedRefundFrom,
       expected_refund_label: emptyToNull(formData.get('expected_refund_label')),
+      expected_refund_amount: expectedRefundAmount,
       to_investigate: toInvestigate,
     },
     { onConflict: 'transaction_id' },

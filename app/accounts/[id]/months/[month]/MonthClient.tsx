@@ -99,6 +99,7 @@ export type AnnotationLite = {
   pro_perso: 'pro' | 'perso' | null
   expected_refund_from: string | null
   expected_refund_label: string | null
+  expected_refund_amount: number | null
   refund_resolved_at: string | null
   refund_resolved_kind: 'cash' | 'wire' | 'loss' | null
   refund_resolved_note: string | null
@@ -124,6 +125,7 @@ export type PendingRefund = {
   raw_label: string
   expected_refund_from: string
   expected_refund_label: string | null
+  expected_refund_amount: number | null
 }
 
 type StatusFilter = 'all' | 'toProcess' | 'investigate' | 'validated'
@@ -175,11 +177,14 @@ export function MonthClient({
   const [categoryDraft, setCategoryDraft] = useState<string>('')
   const [subcategoryDraft, setSubcategoryDraft] = useState<string>('')
   const [investigateDraft, setInvestigateDraft] = useState<boolean>(false)
+  // Montant attendu : valeur saisie + unité (€ ou %). Le serveur convertit en €.
+  const [refundAmountValue, setRefundAmountValue] = useState<string>('100')
+  const [refundAmountUnit, setRefundAmountUnit] = useState<'percent' | 'euro'>('percent')
 
   // Lettrage cross-mois : sélection des dépenses en attente à lettrer avec une ligne `+`
-  const [lettrageDialogOpen, setLettrageDialogOpen] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<Set<string>>(new Set())
   const [pendingSearch, setPendingSearch] = useState('')
+  const [expandedDebtors, setExpandedDebtors] = useState<Set<string>>(new Set())
 
   // Reset les drafts quand on ouvre une autre transaction.
   // Si la transaction n'est pas encore annotée, on pré-remplit avec la
@@ -203,12 +208,29 @@ export function MonthClient({
       }
     }
     setInvestigateDraft(isFlaggedToInvestigate)
+
+    // Montant attendu : si déjà set, on l'affiche en €. Sinon défaut 100% pour
+    // un nouvel input. Le user peut toggle € <-> % via le bouton.
+    const storedAmount = selectedTx.annotation?.expected_refund_amount
+    if (storedAmount !== null && storedAmount !== undefined) {
+      setRefundAmountValue(String(storedAmount))
+      setRefundAmountUnit('euro')
+    } else {
+      setRefundAmountValue('100')
+      setRefundAmountUnit('percent')
+    }
+
+    // Reset lettrage state à chaque ouverture de Sheet
+    setPendingSelection(new Set())
+    setPendingSearch('')
+    setExpandedDebtors(new Set())
   }, [
     selectedTx,
     selectedTx?.id,
     selectedTx?.annotation?.category,
     selectedTx?.annotation?.subcategory,
     selectedTx?.annotation?.to_investigate,
+    selectedTx?.annotation?.expected_refund_amount,
     selectedTx?.bank_category,
     selectedTx?.bank_subcategory,
   ])
@@ -458,10 +480,14 @@ export function MonthClient({
     return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   }, [filteredPendingRefunds])
 
+  // Total des montants attendus pour les dépenses sélectionnées (en € absolus).
+  // Si une dépense a expected_refund_amount, c'est ça ; sinon le montant total.
   const pendingSelectionTotal = useMemo(() => {
     let sum = 0
     for (const p of pendingRefunds) {
-      if (pendingSelection.has(p.id)) sum += p.amount
+      if (pendingSelection.has(p.id)) {
+        sum += p.expected_refund_amount ?? Math.abs(p.amount)
+      }
     }
     return sum
   }, [pendingRefunds, pendingSelection])
@@ -479,14 +505,23 @@ export function MonthClient({
         toast.success(
           `${result.resolved} dépense${result.resolved > 1 ? 's' : ''} lettrée${result.resolved > 1 ? 's' : ''}`,
         )
-        setLettrageDialogOpen(false)
         setPendingSelection(new Set())
         setPendingSearch('')
+        setExpandedDebtors(new Set())
         setSelectedTx(null)
         router.refresh()
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Erreur lettrage')
       }
+    })
+  }
+
+  function toggleDebtorExpanded(debtor: string) {
+    setExpandedDebtors((prev) => {
+      const next = new Set(prev)
+      if (next.has(debtor)) next.delete(debtor)
+      else next.add(debtor)
+      return next
     })
   }
 
@@ -1154,9 +1189,19 @@ export function MonthClient({
                 <div className="rounded-xl border bg-muted/30 p-4">
                   <p className="text-sm font-medium">Quelqu&apos;un me doit</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Si tu attends un remboursement, indique-le. La transaction restera à traiter
-                    jusqu&apos;à ce que tu marques le remboursement résolu (étape suivante).
+                    Si tu attends un remboursement, indique-le. La transaction reste validée
+                    et tu pourras lettrer cette créance plus tard quand le remboursement arrivera.
                   </p>
+                  <input
+                    type="hidden"
+                    name="expense_amount"
+                    value={Math.abs(selectedTx.amount)}
+                  />
+                  <input
+                    type="hidden"
+                    name="expected_refund_amount_unit"
+                    value={refundAmountUnit}
+                  />
                   <div className="mt-3 flex flex-col gap-3">
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="expected_refund_from" className="text-xs">
@@ -1181,6 +1226,60 @@ export function MonthClient({
                         defaultValue={selectedTx.annotation?.expected_refund_label ?? ''}
                         placeholder="Ex. Bretagne 2026"
                       />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="expected_refund_amount" className="text-xs">
+                          Montant attendu
+                        </Label>
+                        {(() => {
+                          const expense = Math.abs(selectedTx.amount)
+                          const numeric = Number(refundAmountValue.replace(',', '.'))
+                          if (
+                            !Number.isFinite(numeric) ||
+                            numeric <= 0 ||
+                            expense <= 0
+                          ) {
+                            return null
+                          }
+                          if (refundAmountUnit === 'percent') {
+                            const euro = (numeric / 100) * expense
+                            return (
+                              <span className="text-xs text-muted-foreground">
+                                ≈ {amountFormatter.format(euro)}
+                              </span>
+                            )
+                          }
+                          const pct = Math.min(100, (numeric / expense) * 100)
+                          return (
+                            <span className="text-xs text-muted-foreground">
+                              ≈ {pct.toFixed(0)}%
+                            </span>
+                          )
+                        })()}
+                      </div>
+                      <div className="flex items-stretch gap-0">
+                        <Input
+                          id="expected_refund_amount"
+                          name="expected_refund_amount"
+                          type="text"
+                          inputMode="decimal"
+                          value={refundAmountValue}
+                          onChange={(e) => setRefundAmountValue(e.target.value)}
+                          className="rounded-r-none"
+                          placeholder="100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRefundAmountUnit((u) => (u === 'percent' ? 'euro' : 'percent'))
+                          }
+                          className="inline-flex w-12 items-center justify-center rounded-r-md border border-l-0 border-input bg-muted text-sm font-medium hover:bg-muted/70"
+                          title="Changer d'unité"
+                        >
+                          {refundAmountUnit === 'percent' ? '%' : '€'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1239,20 +1338,169 @@ export function MonthClient({
                             {pendingRefunds.length} dépense
                             {pendingRefunds.length > 1 ? 's' : ''} taggée
                             {pendingRefunds.length > 1 ? 's' : ''} «&nbsp;à rembourser&nbsp;»
-                            sur ce compte (tous mois confondus).
+                            sur ce compte (tous mois confondus). Déplie un débiteur,
+                            coche les lignes, puis clique Lettrer.
                           </p>
+
+                          <div className="relative mt-3">
+                            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-blue-700/60" />
+                            <Input
+                              type="search"
+                              placeholder="Rechercher debiteur, libellé…"
+                              value={pendingSearch}
+                              onChange={(e) => setPendingSearch(e.target.value)}
+                              className="bg-background pl-9"
+                            />
+                          </div>
+
+                          <div className="mt-3 max-h-[40vh] overflow-y-auto rounded-lg border bg-background">
+                            {pendingByDebtor.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-muted-foreground">
+                                Aucune dépense en attente ne correspond.
+                              </div>
+                            ) : (
+                              pendingByDebtor.map(([debtor, items]) => {
+                                const groupExpected = items.reduce(
+                                  (s, p) =>
+                                    s + (p.expected_refund_amount ?? Math.abs(p.amount)),
+                                  0,
+                                )
+                                const isExpanded = expandedDebtors.has(debtor)
+                                const allChecked = items.every((p) =>
+                                  pendingSelection.has(p.id),
+                                )
+                                return (
+                                  <div key={debtor} className="border-b last:border-b-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleDebtorExpanded(debtor)}
+                                      className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/40"
+                                    >
+                                      <span className="flex items-center gap-2 text-sm font-semibold">
+                                        <span
+                                          className={cn(
+                                            'inline-block size-3 transition-transform',
+                                            isExpanded ? 'rotate-90' : 'rotate-0',
+                                          )}
+                                        >
+                                          ▶
+                                        </span>
+                                        {debtor}
+                                        <span className="font-normal text-muted-foreground">
+                                          · {items.length} ·{' '}
+                                          {amountFormatter.format(groupExpected)} dû
+                                        </span>
+                                      </span>
+                                      {isExpanded ? (
+                                        <span
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            selectAllInGroup(debtor)
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                              e.stopPropagation()
+                                              selectAllInGroup(debtor)
+                                            }
+                                          }}
+                                          className="text-xs font-normal text-foreground underline cursor-pointer"
+                                        >
+                                          {allChecked
+                                            ? 'Tout désélectionner'
+                                            : 'Tout sélectionner'}
+                                        </span>
+                                      ) : null}
+                                    </button>
+                                    {isExpanded ? (
+                                      <ul className="border-t bg-muted/10">
+                                        {items.map((p) => {
+                                          const checked = pendingSelection.has(p.id)
+                                          const expectedAmount =
+                                            p.expected_refund_amount ?? Math.abs(p.amount)
+                                          return (
+                                            <li
+                                              key={p.id}
+                                              onClick={() => togglePending(p.id)}
+                                              className={cn(
+                                                'flex cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm transition last:border-b-0 hover:bg-muted/30',
+                                                checked && 'bg-primary/5',
+                                              )}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => togglePending(p.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="size-4 rounded border-input accent-foreground"
+                                              />
+                                              <div className="flex-1 min-w-0">
+                                                <div className="truncate font-medium">
+                                                  {p.raw_label}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                  {dateFormatter.format(new Date(p.op_date))}
+                                                  {p.expected_refund_label
+                                                    ? ` · ${p.expected_refund_label}`
+                                                    : ''}
+                                                </div>
+                                              </div>
+                                              <div className="font-mono tabular-nums">
+                                                <span className="text-emerald-700">
+                                                  {amountFormatter.format(expectedAmount)}
+                                                </span>
+                                                {p.expected_refund_amount !== null &&
+                                                Math.abs(p.amount) !== expectedAmount ? (
+                                                  <span className="ml-1 text-xs text-muted-foreground">
+                                                    /{' '}
+                                                    {amountFormatter.format(Math.abs(p.amount))}
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                            </li>
+                                          )
+                                        })}
+                                      </ul>
+                                    ) : null}
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+
+                          {pendingSelection.size > 0 ? (
+                            <div className="mt-3 flex items-center justify-between rounded-lg border bg-background px-3 py-2 text-xs">
+                              <div>
+                                <span className="font-semibold">
+                                  {pendingSelection.size}
+                                </span>{' '}
+                                sélectionnée{pendingSelection.size > 1 ? 's' : ''} ·{' '}
+                                <span className="font-mono text-emerald-700">
+                                  {amountFormatter.format(pendingSelectionTotal)}
+                                </span>
+                              </div>
+                              <div className="text-muted-foreground">
+                                vs entrée{' '}
+                                <span className="font-mono text-emerald-700">
+                                  {amountFormatter.format(selectedTx.amount)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : null}
+
                           <Button
                             type="button"
                             size="sm"
                             className="mt-3"
-                            onClick={() => {
-                              setPendingSelection(new Set())
-                              setPendingSearch('')
-                              setLettrageDialogOpen(true)
-                            }}
-                            disabled={isPending}
+                            onClick={handleResolvePending}
+                            disabled={isPending || pendingSelection.size === 0}
                           >
-                            Choisir les dépenses à lettrer
+                            {isPending
+                              ? 'Lettrage…'
+                              : pendingSelection.size === 0
+                                ? 'Lettrer (sélectionne au moins une dépense)'
+                                : `Lettrer ${pendingSelection.size} dépense${pendingSelection.size > 1 ? 's' : ''}`}
                           </Button>
                         </div>
                       </div>
@@ -1428,164 +1676,6 @@ export function MonthClient({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Cross-month lettrage dialog (depuis la Sheet d'une ligne `+`) */}
-      <Dialog
-        open={lettrageDialogOpen}
-        onOpenChange={(o) => {
-          setLettrageDialogOpen(o)
-          if (!o) {
-            setPendingSelection(new Set())
-            setPendingSearch('')
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Lettrer des dépenses en attente</DialogTitle>
-            <DialogDescription>
-              Sélectionne les dépenses que cette entrée rembourse. Les
-              <span className="font-medium"> tags «&nbsp;à rembourser&nbsp;»</span> sont
-              préservés ; seul le statut «&nbsp;résolu&nbsp;» change.
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedTx ? (
-            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Entrée :{' '}
-              <span className="font-mono text-foreground">
-                {dateFormatter.format(new Date(selectedTx.op_date))} ·{' '}
-                {selectedTx.raw_label}
-              </span>{' '}
-              ·{' '}
-              <span className="font-semibold text-emerald-700">
-                {amountFormatter.format(selectedTx.amount)}
-              </span>
-            </div>
-          ) : null}
-
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Rechercher par debiteur, libellé, label…"
-              value={pendingSearch}
-              onChange={(e) => setPendingSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
-            {pendingByDebtor.length === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                Aucune dépense en attente ne correspond à ta recherche.
-              </div>
-            ) : (
-              pendingByDebtor.map(([debtor, items]) => {
-                const groupTotal = items.reduce((s, p) => s + p.amount, 0)
-                const allChecked = items.every((p) => pendingSelection.has(p.id))
-                return (
-                  <div key={debtor} className="border-b last:border-b-0">
-                    <button
-                      type="button"
-                      onClick={() => selectAllInGroup(debtor)}
-                      className="flex w-full items-center justify-between bg-muted/40 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted/60"
-                    >
-                      <span>
-                        {debtor}{' '}
-                        <span className="font-normal normal-case text-muted-foreground/70">
-                          · {items.length} dépense{items.length > 1 ? 's' : ''} ·{' '}
-                          {amountFormatter.format(groupTotal)}
-                        </span>
-                      </span>
-                      <span className="text-xs font-normal normal-case text-foreground underline">
-                        {allChecked ? 'Tout désélectionner' : 'Tout sélectionner'}
-                      </span>
-                    </button>
-                    <ul>
-                      {items.map((p) => {
-                        const checked = pendingSelection.has(p.id)
-                        return (
-                          <li
-                            key={p.id}
-                            onClick={() => togglePending(p.id)}
-                            className={cn(
-                              'flex cursor-pointer items-center gap-3 px-3 py-2 text-sm transition hover:bg-muted/30',
-                              checked && 'bg-primary/5',
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => togglePending(p.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="size-4 rounded border-input accent-foreground"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="truncate font-medium">{p.raw_label}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {dateFormatter.format(new Date(p.op_date))}
-                                {p.expected_refund_label
-                                  ? ` · ${p.expected_refund_label}`
-                                  : ''}
-                              </div>
-                            </div>
-                            <div className="font-mono tabular-nums text-red-700">
-                              {amountFormatter.format(p.amount)}
-                            </div>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
-                )
-              })
-            )}
-          </div>
-
-          {selectedTx && pendingSelection.size > 0 ? (
-            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-              <div>
-                <span className="font-semibold">{pendingSelection.size}</span>{' '}
-                dépense{pendingSelection.size > 1 ? 's' : ''} sélectionnée
-                {pendingSelection.size > 1 ? 's' : ''} ·{' '}
-                <span className="font-mono text-red-700">
-                  {amountFormatter.format(pendingSelectionTotal)}
-                </span>
-              </div>
-              <div className="text-muted-foreground">
-                vs entrée{' '}
-                <span className="font-mono text-emerald-700">
-                  {amountFormatter.format(selectedTx.amount)}
-                </span>{' '}
-                · diff{' '}
-                <span className="font-mono">
-                  {amountFormatter.format(selectedTx.amount + pendingSelectionTotal)}
-                </span>
-              </div>
-            </div>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setLettrageDialogOpen(false)}
-            >
-              Annuler
-            </Button>
-            <Button
-              type="button"
-              onClick={handleResolvePending}
-              disabled={isPending || pendingSelection.size === 0}
-            >
-              {isPending
-                ? 'Lettrage…'
-                : `Lettrer ${pendingSelection.size} dépense${pendingSelection.size > 1 ? 's' : ''}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Bulk apply dialog */}
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>

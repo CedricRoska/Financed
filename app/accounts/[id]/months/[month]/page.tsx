@@ -49,7 +49,7 @@ export default async function MonthDetailPage({
   const { data: transactions } = await supabase
     .from('transactions')
     .select(
-      'id, op_date, amount, raw_label, bank_op_type, bank_category, bank_subcategory, transaction_annotations(category, subcategory, comment, pro_perso, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note, to_investigate)',
+      'id, op_date, amount, raw_label, bank_op_type, bank_category, bank_subcategory, transaction_annotations(category, subcategory, comment, pro_perso, expected_refund_from, expected_refund_label, expected_refund_amount, refund_resolved_at, refund_resolved_kind, refund_resolved_note, to_investigate)',
     )
     .eq('account_id', accountId)
     .gte('op_date', startDate)
@@ -80,7 +80,7 @@ export default async function MonthDetailPage({
   const { data: pendingRefundsRaw } = await supabase
     .from('transactions')
     .select(
-      'id, op_date, amount, raw_label, transaction_annotations!inner(expected_refund_from, expected_refund_label, refund_resolved_at)',
+      'id, op_date, amount, raw_label, transaction_annotations!inner(expected_refund_from, expected_refund_label, expected_refund_amount, refund_resolved_at)',
     )
     .eq('account_id', accountId)
     .not('transaction_annotations.expected_refund_from', 'is', null)
@@ -90,7 +90,11 @@ export default async function MonthDetailPage({
   const pendingRefunds: PendingRefund[] = (pendingRefundsRaw ?? [])
     .map((t) => {
       const annotation = pickAnnotation(t.transaction_annotations) as
-        | { expected_refund_from: string | null; expected_refund_label: string | null }
+        | {
+            expected_refund_from: string | null
+            expected_refund_label: string | null
+            expected_refund_amount: number | null
+          }
         | null
       const debtor = annotation?.expected_refund_from?.trim() ?? ''
       if (debtor === '') return null
@@ -101,6 +105,10 @@ export default async function MonthDetailPage({
         raw_label: t.raw_label,
         expected_refund_from: debtor,
         expected_refund_label: annotation?.expected_refund_label ?? null,
+        expected_refund_amount:
+          annotation?.expected_refund_amount !== null && annotation?.expected_refund_amount !== undefined
+            ? Number(annotation.expected_refund_amount)
+            : null,
       }
     })
     .filter((x): x is PendingRefund => x !== null)
