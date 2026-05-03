@@ -3,24 +3,18 @@ import { redirect } from 'next/navigation'
 import { CreditCardIcon, UploadIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { AuthenticatedShell } from '@/components/authenticated-shell'
 import { AccountActions } from './AccountActions'
-import { TrendChart, type MonthlyTrendPoint } from './TrendChart'
-import { monthSlugFromOpDate } from '@/lib/months/format'
-import { groupTransactionsByMonth } from '@/lib/months/format'
+import { AccountOverview, type AccountTransactionLite } from './AccountOverview'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionValidated } from '@/lib/transactions/validation'
-
-const amountFormatter = new Intl.NumberFormat('fr-FR', {
-  style: 'currency',
-  currency: 'EUR',
-})
 
 type AnnotationLite = {
   category: string | null
   expected_refund_from: string | null
   refund_resolved_at: string | null
+  to_investigate: boolean | null
+  pro_perso: 'pro' | 'perso' | null
 }
 
 function pickAnnotation(raw: unknown): AnnotationLite | null {
@@ -50,48 +44,33 @@ export default async function AccountDetailPage({
   const { data: transactions } = await supabase
     .from('transactions')
     .select(
-      'op_date, amount, transaction_annotations(category, expected_refund_from, refund_resolved_at)',
+      'op_date, amount, transaction_annotations(category, expected_refund_from, refund_resolved_at, to_investigate, pro_perso)',
     )
     .eq('account_id', id)
     .order('op_date', { ascending: false })
 
-  const enriched = (transactions ?? []).map((t) => {
+  const enriched: AccountTransactionLite[] = (transactions ?? []).map((t) => {
     const annotation = pickAnnotation(t.transaction_annotations)
     return {
       op_date: t.op_date,
       amount: Number(t.amount),
-      hasAnnotation: isTransactionValidated(annotation),
+      hasAnnotation: isTransactionValidated(
+        annotation
+          ? {
+              category: annotation.category,
+              expected_refund_from: annotation.expected_refund_from,
+              refund_resolved_at: annotation.refund_resolved_at,
+              to_investigate: annotation.to_investigate ?? false,
+            }
+          : null,
+      ),
+      proPerso: annotation?.pro_perso ?? null,
     }
   })
 
-  const months = groupTransactionsByMonth(enriched)
-  const totalBalance = enriched.reduce((sum, t) => sum + t.amount, 0)
-  const totalToProcess = enriched.filter((t) => !t.hasAnnotation).length
-  const totalIncome = enriched.filter((t) => t.amount > 0).reduce((sum, t) => sum + t.amount, 0)
-  const totalExpenses = enriched.filter((t) => t.amount < 0).reduce((sum, t) => sum + t.amount, 0)
-
-  // Trend chart data: groupe par mois income/expenses/net
-  const trendMap = new Map<string, MonthlyTrendPoint>()
-  for (const t of enriched) {
-    const slug = monthSlugFromOpDate(t.op_date)
-    const existing = trendMap.get(slug) ?? {
-      monthSlug: slug,
-      income: 0,
-      expenses: 0,
-      net: 0,
-    }
-    if (t.amount >= 0) existing.income += t.amount
-    else existing.expenses += t.amount
-    existing.net += t.amount
-    trendMap.set(slug, existing)
-  }
-  const trend = [...trendMap.values()].sort((a, b) =>
-    a.monthSlug < b.monthSlug ? -1 : 1,
-  )
-
   return (
     <AuthenticatedShell>
-      <section className="border-b bg-muted/20 px-6 py-8 lg:px-10">
+      <section className="border-b bg-muted/20 px-6 pt-8 lg:px-10">
         <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
@@ -106,12 +85,12 @@ export default async function AccountDetailPage({
                 </Badge>
               ) : null}
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {months.length} mois · {enriched.length} transaction{enriched.length > 1 ? 's' : ''}
+            <p className="mt-1 pb-8 text-sm text-muted-foreground">
+              {enriched.length} transaction{enriched.length > 1 ? 's' : ''}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pb-8">
             <Link href={`/accounts/${account.id}/import`} className={buttonVariants()}>
               <UploadIcon className="size-4" />
               Importer un relevé
@@ -119,150 +98,13 @@ export default async function AccountDetailPage({
             <AccountActions accountId={account.id} accountName={account.name} />
           </div>
         </div>
-
-        {enriched.length > 0 ? (
-          <div className="mx-auto mt-8 grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardContent className="p-5">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Solde cumulé
-                </p>
-                <p
-                  className={`mt-1 text-2xl font-semibold tabular-nums ${
-                    totalBalance >= 0 ? 'text-emerald-700' : 'text-red-700'
-                  }`}
-                >
-                  {amountFormatter.format(totalBalance)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Recettes totales
-                </p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
-                  {amountFormatter.format(totalIncome)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Dépenses totales
-                </p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {amountFormatter.format(totalExpenses)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                  À traiter
-                </p>
-                <p
-                  className={`mt-1 text-2xl font-semibold tabular-nums ${
-                    totalToProcess > 0 ? 'text-amber-700' : 'text-emerald-700'
-                  }`}
-                >
-                  {totalToProcess}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
       </section>
 
-      <div className="px-6 py-8 lg:px-10">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6">
-          {trend.length > 1 ? <TrendChart trend={trend} /> : null}
-
-          <h2 className="text-lg font-semibold tracking-tight">Mois</h2>
-
-          {months.length === 0 ? (
-            <Card>
-              <CardContent className="px-6 py-16 text-center">
-                <UploadIcon className="mx-auto mb-3 size-10 text-muted-foreground" />
-                <p className="text-base">Aucune transaction pour ce compte.</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Importe ton premier relevé pour démarrer.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {months.map((m) => {
-                const isPositive = m.score >= 0
-                const validatedRatio =
-                  m.count > 0 ? Math.round(((m.count - m.toProcess) / m.count) * 100) : 0
-                return (
-                  <Link key={m.monthSlug} href={`/accounts/${account.id}/months/${m.monthSlug}`}>
-                    <Card className="transition hover:border-foreground/30 hover:shadow-sm">
-                      <CardContent className="flex items-center justify-between gap-4 p-5">
-                        <div className="flex items-center gap-4">
-                          <span
-                            className={`inline-block h-3 w-3 rounded-full ${
-                              isPositive ? 'bg-emerald-500' : 'bg-red-500'
-                            }`}
-                            aria-label={isPositive ? 'Solde positif' : 'Solde négatif'}
-                          />
-                          <div>
-                            <p className="text-base font-semibold">{m.label}</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {m.count} transaction{m.count > 1 ? 's' : ''}
-                              {m.toProcess > 0 ? (
-                                <>
-                                  {' · '}
-                                  <span className="font-medium text-amber-700">
-                                    {m.toProcess} à traiter
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  {' · '}
-                                  <span className="font-medium text-emerald-700">
-                                    Tout validé
-                                  </span>
-                                </>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="hidden items-center gap-4 sm:flex">
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs uppercase tracking-wider text-muted-foreground">
-                              Validé
-                            </span>
-                            <span className="text-sm font-medium tabular-nums">
-                              {validatedRatio}%
-                            </span>
-                          </div>
-                          <span
-                            className={`text-lg font-semibold tabular-nums ${
-                              isPositive ? 'text-emerald-700' : 'text-red-700'
-                            }`}
-                          >
-                            {amountFormatter.format(m.score)}
-                          </span>
-                        </div>
-                        <span
-                          className={`text-lg font-semibold tabular-nums sm:hidden ${
-                            isPositive ? 'text-emerald-700' : 'text-red-700'
-                          }`}
-                        >
-                          {amountFormatter.format(m.score)}
-                        </span>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      <AccountOverview
+        accountId={account.id}
+        isHybrid={account.is_hybrid}
+        transactions={enriched}
+      />
     </AuthenticatedShell>
   )
 }
