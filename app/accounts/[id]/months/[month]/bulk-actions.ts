@@ -10,7 +10,7 @@ type BulkApplyInput = {
   accountId: string
   category?: string | null
   subcategory?: string | null
-  proPerso?: 'pro' | 'perso' | null | 'unset'
+  proPerso?: 'pro' | 'perso'
 }
 
 /**
@@ -19,8 +19,6 @@ type BulkApplyInput = {
  * UPSERT par transaction_id (clé UNIQUE). Si une transaction a déjà une annotation,
  * on met à jour seulement les champs fournis. Les autres champs (commentaire,
  * remboursement attendu, résolution) sont préservés.
- *
- * `proPerso === 'unset'` permet de remettre à null explicitement.
  */
 export async function bulkApplyAnnotation({
   transactionIds,
@@ -52,11 +50,7 @@ export async function bulkApplyAnnotation({
   const upserts = transactionIds.map((transactionId) => {
     const prev = existingByTxId.get(transactionId)
     const nextProPerso =
-      proPerso === undefined
-        ? (prev?.pro_perso ?? null)
-        : proPerso === 'unset'
-          ? null
-          : proPerso
+      proPerso === undefined ? (prev?.pro_perso ?? null) : proPerso
     const nextCategory =
       category === undefined ? (prev?.category ?? null) : category
     const nextSubcategory =

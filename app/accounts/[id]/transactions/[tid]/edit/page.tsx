@@ -133,11 +133,11 @@ export default async function EditTransactionPage({
                 <input
                   type="radio"
                   name="pro_perso"
-                  value=""
-                  defaultChecked={!annotation?.pro_perso}
+                  value="perso"
+                  defaultChecked={annotation?.pro_perso !== 'pro'}
                   className="h-4 w-4 border-neutral-300 text-emerald-600 focus:ring-emerald-500"
                 />
-                <span className="text-sm text-neutral-700">Non classé</span>
+                <span className="text-sm text-neutral-700">Perso</span>
               </label>
               <label className="inline-flex items-center gap-2">
                 <input
@@ -148,16 +148,6 @@ export default async function EditTransactionPage({
                   className="h-4 w-4 border-neutral-300 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span className="text-sm text-neutral-700">Pro</span>
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="pro_perso"
-                  value="perso"
-                  defaultChecked={annotation?.pro_perso === 'perso'}
-                  className="h-4 w-4 border-neutral-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-sm text-neutral-700">Perso</span>
               </label>
             </div>
           </fieldset>

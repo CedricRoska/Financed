@@ -144,7 +144,7 @@ export function MonthClient({
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkCategory, setBulkCategory] = useState('')
   const [bulkSubcategory, setBulkSubcategory] = useState('')
-  const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | 'unset' | 'keep'>('keep')
+  const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | 'keep'>('keep')
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const focusedRowRef = useRef<HTMLTableRowElement | null>(null)
   // Confirmation hybride : stocke les data du formulaire en attente quand l'utilisateur
@@ -186,7 +186,7 @@ export function MonthClient({
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
       if (tab === 'pro' && t.annotation?.pro_perso !== 'pro') return false
-      if (tab === 'perso' && t.annotation?.pro_perso !== 'perso') return false
+      if (tab === 'perso' && t.annotation?.pro_perso === 'pro') return false
       if (statusFilter === 'toProcess' && !t.toProcess) return false
       if (statusFilter === 'validated' && t.toProcess) return false
       if (search.trim() !== '') {
@@ -353,12 +353,7 @@ export function MonthClient({
     const ids = Array.from(selectedIds)
     const trimmedCategory = bulkCategory.trim()
     const trimmedSubcategory = bulkSubcategory.trim()
-    const proPersoValue =
-      bulkProPerso === 'keep'
-        ? undefined
-        : bulkProPerso === 'unset'
-          ? 'unset'
-          : bulkProPerso
+    const proPersoValue = bulkProPerso === 'keep' ? undefined : bulkProPerso
 
     startTransition(async () => {
       try {
@@ -384,8 +379,8 @@ export function MonthClient({
   }
 
   function handleBulkApply() {
-    // Si compte non-hybride et user a choisi Pro/Perso bulk, demander d'activer
-    if (!isHybrid && (bulkProPerso === 'pro' || bulkProPerso === 'perso')) {
+    // Seul le passage en Pro déclenche l'activation hybride. Perso = défaut implicite.
+    if (!isHybrid && bulkProPerso === 'pro') {
       setHybridConfirm({ kind: 'bulk' })
       return
     }
@@ -448,11 +443,8 @@ export function MonthClient({
   }
 
   function handleSubmit(formData: FormData, advance: boolean = false) {
-    // Si compte non-hybride et user a coché Pro ou Perso, demander d'activer
-    const proPerso = formData.get('pro_perso')
-    const wantsProPerso = proPerso === 'pro' || proPerso === 'perso'
-
-    if (!isHybrid && wantsProPerso) {
+    // Seul le passage en Pro déclenche l'activation hybride. Perso = défaut implicite.
+    if (!isHybrid && formData.get('pro_perso') === 'pro') {
       setHybridConfirm({ kind: 'single', formData, advance })
       return
     }
@@ -481,7 +473,7 @@ export function MonthClient({
 
   function cancelHybridActivation() {
     setHybridConfirm(null)
-    toast.info('Activation annulée — le classement Pro/Perso a été remis à zéro')
+    toast.info("Activation annulée — la transaction n'a pas été modifiée")
   }
 
   function handleResolve(formData: FormData) {
@@ -731,16 +723,12 @@ export function MonthClient({
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>
                             )}
-                            {t.annotation?.pro_perso ? (
+                            {t.annotation?.pro_perso === 'pro' ? (
                               <Badge
                                 variant="outline"
-                                className={
-                                  t.annotation.pro_perso === 'pro'
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                    : 'border-blue-200 bg-blue-50 text-blue-700'
-                                }
+                                className="border-emerald-200 bg-emerald-50 text-emerald-700"
                               >
-                                {t.annotation.pro_perso === 'pro' ? 'Pro' : 'Perso'}
+                                Pro
                               </Badge>
                             ) : null}
                             {refundPending ? (
@@ -905,16 +893,16 @@ export function MonthClient({
                   </div>
                   <RadioGroup
                     name="pro_perso"
-                    defaultValue={selectedTx.annotation?.pro_perso ?? ''}
+                    defaultValue={selectedTx.annotation?.pro_perso === 'pro' ? 'pro' : 'perso'}
                     className="flex gap-6"
                   >
                     <div className="flex items-center gap-2">
-                      <RadioGroupItem value="" id={`pp-none-${selectedTx.id}`} />
+                      <RadioGroupItem value="perso" id={`pp-perso-${selectedTx.id}`} />
                       <Label
-                        htmlFor={`pp-none-${selectedTx.id}`}
+                        htmlFor={`pp-perso-${selectedTx.id}`}
                         className="cursor-pointer font-normal"
                       >
-                        Non classé
+                        Perso
                       </Label>
                     </div>
                     <div className="flex items-center gap-2">
@@ -924,15 +912,6 @@ export function MonthClient({
                         className="cursor-pointer font-normal"
                       >
                         Pro
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem value="perso" id={`pp-perso-${selectedTx.id}`} />
-                      <Label
-                        htmlFor={`pp-perso-${selectedTx.id}`}
-                        className="cursor-pointer font-normal"
-                      >
-                        Perso
                       </Label>
                     </div>
                   </RadioGroup>
@@ -1249,7 +1228,7 @@ export function MonthClient({
               <RadioGroup
                 value={bulkProPerso}
                 onValueChange={(v) =>
-                  setBulkProPerso(v as 'pro' | 'perso' | 'unset' | 'keep')
+                  setBulkProPerso(v as 'pro' | 'perso' | 'keep')
                 }
                 className="flex flex-wrap gap-4"
               >
@@ -1260,21 +1239,15 @@ export function MonthClient({
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem value="pro" id="bulk-pro" />
-                  <Label htmlFor="bulk-pro" className="cursor-pointer font-normal">
-                    Pro
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
                   <RadioGroupItem value="perso" id="bulk-perso" />
                   <Label htmlFor="bulk-perso" className="cursor-pointer font-normal">
                     Perso
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <RadioGroupItem value="unset" id="bulk-unset" />
-                  <Label htmlFor="bulk-unset" className="cursor-pointer font-normal">
-                    Non classé
+                  <RadioGroupItem value="pro" id="bulk-pro" />
+                  <Label htmlFor="bulk-pro" className="cursor-pointer font-normal">
+                    Pro
                   </Label>
                 </div>
               </RadioGroup>
