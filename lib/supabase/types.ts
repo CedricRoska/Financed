@@ -117,6 +117,7 @@ export type Database = {
           refund_resolved_at: string | null
           refund_resolved_kind: 'cash' | 'wire' | 'loss' | null
           refund_resolved_note: string | null
+          to_investigate: boolean
           created_at: string
           updated_at: string
         }
@@ -133,6 +134,7 @@ export type Database = {
           refund_resolved_at?: string | null
           refund_resolved_kind?: 'cash' | 'wire' | 'loss' | null
           refund_resolved_note?: string | null
+          to_investigate?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -149,6 +151,7 @@ export type Database = {
           refund_resolved_at?: string | null
           refund_resolved_kind?: 'cash' | 'wire' | 'loss' | null
           refund_resolved_note?: string | null
+          to_investigate?: boolean
           created_at?: string
           updated_at?: string
         }

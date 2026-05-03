@@ -58,6 +58,8 @@ export async function saveAnnotation(formData: FormData): Promise<void> {
   const subcategory =
     category && subcategoryRaw && subcategoryRaw.length >= 2 ? subcategoryRaw : null
 
+  const toInvestigate = formData.get('to_investigate') === '1'
+
   const { error } = await supabase.from('transaction_annotations').upsert(
     {
       transaction_id: transactionId,
@@ -68,6 +70,7 @@ export async function saveAnnotation(formData: FormData): Promise<void> {
       pro_perso: proPerso,
       expected_refund_from: emptyToNull(formData.get('expected_refund_from')),
       expected_refund_label: emptyToNull(formData.get('expected_refund_label')),
+      to_investigate: toInvestigate,
     },
     { onConflict: 'transaction_id' },
   )

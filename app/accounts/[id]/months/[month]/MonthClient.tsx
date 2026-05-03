@@ -28,6 +28,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -97,6 +98,7 @@ export type AnnotationLite = {
   refund_resolved_at: string | null
   refund_resolved_kind: 'cash' | 'wire' | 'loss' | null
   refund_resolved_note: string | null
+  to_investigate: boolean
 }
 
 export type EnrichedTransaction = {
@@ -111,7 +113,7 @@ export type EnrichedTransaction = {
   toProcess: boolean
 }
 
-type StatusFilter = 'all' | 'toProcess' | 'validated'
+type StatusFilter = 'all' | 'toProcess' | 'investigate' | 'validated'
 
 export type UserCategoryWithSubs = {
   name: string
@@ -157,6 +159,7 @@ export function MonthClient({
   // State du formulaire (controlled) pour piloter la Combobox
   const [categoryDraft, setCategoryDraft] = useState<string>('')
   const [subcategoryDraft, setSubcategoryDraft] = useState<string>('')
+  const [investigateDraft, setInvestigateDraft] = useState<boolean>(false)
 
   // Reset les drafts quand on ouvre une autre transaction.
   // Si la transaction n'est pas encore annotée, on pré-remplit avec la
@@ -173,11 +176,13 @@ export function MonthClient({
       setCategoryDraft(selectedTx.bank_category ?? '')
       setSubcategoryDraft(selectedTx.bank_subcategory ?? '')
     }
+    setInvestigateDraft(selectedTx.annotation?.to_investigate ?? false)
   }, [
     selectedTx,
     selectedTx?.id,
     selectedTx?.annotation?.category,
     selectedTx?.annotation?.subcategory,
+    selectedTx?.annotation?.to_investigate,
     selectedTx?.bank_category,
     selectedTx?.bank_subcategory,
   ])
@@ -188,6 +193,7 @@ export function MonthClient({
       if (tab === 'pro' && t.annotation?.pro_perso !== 'pro') return false
       if (tab === 'perso' && t.annotation?.pro_perso === 'pro') return false
       if (statusFilter === 'toProcess' && !t.toProcess) return false
+      if (statusFilter === 'investigate' && !t.annotation?.to_investigate) return false
       if (statusFilter === 'validated' && t.toProcess) return false
       if (search.trim() !== '') {
         const q = search.trim().toLowerCase()
@@ -601,7 +607,7 @@ export function MonthClient({
           ) : null}
 
           <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
-            {(['all', 'toProcess', 'validated'] as const).map((s) => (
+            {(['all', 'toProcess', 'investigate', 'validated'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
@@ -611,7 +617,13 @@ export function MonthClient({
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {s === 'all' ? 'Toutes' : s === 'toProcess' ? 'À traiter' : 'Validées'}
+                {s === 'all'
+                  ? 'Toutes'
+                  : s === 'toProcess'
+                    ? 'À traiter'
+                    : s === 'investigate'
+                      ? 'À investiguer'
+                      : 'Validées'}
               </button>
             ))}
           </div>
@@ -731,6 +743,14 @@ export function MonthClient({
                                 Pro
                               </Badge>
                             ) : null}
+                            {t.annotation?.to_investigate ? (
+                              <Badge
+                                variant="outline"
+                                className="border-orange-300 bg-orange-50 text-orange-800"
+                              >
+                                🔍 À investiguer
+                              </Badge>
+                            ) : null}
                             {refundPending ? (
                               <Badge
                                 variant="outline"
@@ -819,6 +839,37 @@ export function MonthClient({
 
                 <input type="hidden" name="category" value={categoryDraft} />
                 <input type="hidden" name="subcategory" value={subcategoryDraft} />
+                <input
+                  type="hidden"
+                  name="to_investigate"
+                  value={investigateDraft ? '1' : '0'}
+                />
+
+                <div
+                  className={cn(
+                    'flex items-start justify-between gap-3 rounded-lg border px-3 py-3 transition',
+                    investigateDraft
+                      ? 'border-orange-300 bg-orange-50/60'
+                      : 'border-dashed bg-muted/20',
+                  )}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <Label
+                      htmlFor={`investigate-${selectedTx.id}`}
+                      className="cursor-pointer text-sm font-medium"
+                    >
+                      🔍 À investiguer
+                    </Label>
+                    <span className="text-xs text-muted-foreground">
+                      Marque cette transaction si tu ne sais pas encore comment la classer
+                    </span>
+                  </div>
+                  <Switch
+                    id={`investigate-${selectedTx.id}`}
+                    checked={investigateDraft}
+                    onCheckedChange={setInvestigateDraft}
+                  />
+                </div>
 
                 {selectedTx.bank_category || selectedTx.bank_op_type ? (
                   <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">

@@ -44,7 +44,7 @@ export default async function MonthDetailPage({
   const { data: transactions } = await supabase
     .from('transactions')
     .select(
-      'id, op_date, amount, raw_label, bank_op_type, bank_category, bank_subcategory, transaction_annotations(category, subcategory, comment, pro_perso, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note)',
+      'id, op_date, amount, raw_label, bank_op_type, bank_category, bank_subcategory, transaction_annotations(category, subcategory, comment, pro_perso, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note, to_investigate)',
     )
     .eq('account_id', accountId)
     .gte('op_date', startDate)

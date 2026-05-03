@@ -66,6 +66,38 @@ describe('isTransactionValidated', () => {
       }),
     ).toBe(true)
   })
+
+  it('returns false when to_investigate flag is set, even with category', () => {
+    expect(
+      isTransactionValidated({
+        ...baseAnnotation,
+        category: 'Courses',
+        to_investigate: true,
+      }),
+    ).toBe(false)
+  })
+
+  it('returns false when to_investigate flag is set, even with resolved refund', () => {
+    expect(
+      isTransactionValidated({
+        ...baseAnnotation,
+        category: 'Vacances',
+        expected_refund_from: 'Paul',
+        refund_resolved_at: '2026-04-20T10:00:00Z',
+        to_investigate: true,
+      }),
+    ).toBe(false)
+  })
+
+  it('returns true when to_investigate is explicitly false and other conditions met', () => {
+    expect(
+      isTransactionValidated({
+        ...baseAnnotation,
+        category: 'Courses',
+        to_investigate: false,
+      }),
+    ).toBe(true)
+  })
 })
 
 describe('isTransactionToProcess', () => {
