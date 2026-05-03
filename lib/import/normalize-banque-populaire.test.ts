@@ -25,6 +25,9 @@ describe('normalizeBanquePopulaireRow', () => {
       amount: -10.5,
       raw_label: 'CARREFOUR FR TOULOUSE',
       reference: '4T5O7TJ',
+      bank_op_type: 'Carte bancaire',
+      bank_category: 'Alimentation',
+      bank_subcategory: 'Hyper/supermarche',
     })
   })
 
@@ -36,6 +39,9 @@ describe('normalizeBanquePopulaireRow', () => {
       amount: 2500,
       raw_label: 'CARREFOUR FR TOULOUSE',
       reference: '4T5O7TJ',
+      bank_op_type: 'Carte bancaire',
+      bank_category: 'Alimentation',
+      bank_subcategory: 'Hyper/supermarche',
     })
   })
 
@@ -145,7 +151,6 @@ describe('normalizeBanquePopulaireRow', () => {
   })
 
   it('matches columns insensitive to case and accents', () => {
-    // Test the COLUMN_KEYS normalization tolerance
     const row = {
       'DATE OPERATION': '15/04/2026',
       'LIBELLE OPERATION': 'CARREFOUR',
@@ -154,5 +159,33 @@ describe('normalizeBanquePopulaireRow', () => {
     }
     const result = normalizeBanquePopulaireRow(row, 2)
     expect('op_date' in result && result.op_date).toBe('2026-04-15')
+  })
+
+  it('extracts bank_op_type, bank_category, bank_subcategory from BP CSV', () => {
+    const result = normalizeBanquePopulaireRow(validBPRow, 2)
+    expect('bank_op_type' in result && result.bank_op_type).toBe('Carte bancaire')
+    expect('bank_category' in result && result.bank_category).toBe('Alimentation')
+    expect('bank_subcategory' in result && result.bank_subcategory).toBe('Hyper/supermarche')
+  })
+
+  it('returns null bank metadata when columns are absent', () => {
+    const row = {
+      'Date operation': '15/04/2026',
+      'Libelle operation': 'TEST',
+      Debit: '-10,00',
+      Credit: '',
+    }
+    const result = normalizeBanquePopulaireRow(row, 2)
+    expect('bank_op_type' in result && result.bank_op_type).toBeNull()
+    expect('bank_category' in result && result.bank_category).toBeNull()
+    expect('bank_subcategory' in result && result.bank_subcategory).toBeNull()
+  })
+
+  it('returns null bank metadata when columns are empty strings', () => {
+    const row = { ...validBPRow, 'Type operation': '', Categorie: '', 'Sous categorie': '' }
+    const result = normalizeBanquePopulaireRow(row, 2)
+    expect('bank_op_type' in result && result.bank_op_type).toBeNull()
+    expect('bank_category' in result && result.bank_category).toBeNull()
+    expect('bank_subcategory' in result && result.bank_subcategory).toBeNull()
   })
 })

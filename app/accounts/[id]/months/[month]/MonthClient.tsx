@@ -104,6 +104,9 @@ export type EnrichedTransaction = {
   op_date: string
   amount: number
   raw_label: string
+  bank_op_type: string | null
+  bank_category: string | null
+  bank_subcategory: string | null
   annotation: AnnotationLite | null
   toProcess: boolean
 }
@@ -155,11 +158,29 @@ export function MonthClient({
   const [categoryDraft, setCategoryDraft] = useState<string>('')
   const [subcategoryDraft, setSubcategoryDraft] = useState<string>('')
 
-  // Reset les drafts quand on ouvre une autre transaction
+  // Reset les drafts quand on ouvre une autre transaction.
+  // Si la transaction n'est pas encore annotée, on pré-remplit avec la
+  // classification BP brute (suggestion). L'utilisateur reste libre de modifier.
   useEffect(() => {
-    setCategoryDraft(selectedTx?.annotation?.category ?? '')
-    setSubcategoryDraft(selectedTx?.annotation?.subcategory ?? '')
-  }, [selectedTx?.id, selectedTx?.annotation?.category, selectedTx?.annotation?.subcategory])
+    if (!selectedTx) return
+    const hasUserAnnotation = Boolean(
+      selectedTx.annotation?.category || selectedTx.annotation?.subcategory,
+    )
+    if (hasUserAnnotation) {
+      setCategoryDraft(selectedTx.annotation?.category ?? '')
+      setSubcategoryDraft(selectedTx.annotation?.subcategory ?? '')
+    } else {
+      setCategoryDraft(selectedTx.bank_category ?? '')
+      setSubcategoryDraft(selectedTx.bank_subcategory ?? '')
+    }
+  }, [
+    selectedTx,
+    selectedTx?.id,
+    selectedTx?.annotation?.category,
+    selectedTx?.annotation?.subcategory,
+    selectedTx?.bank_category,
+    selectedTx?.bank_subcategory,
+  ])
   const [isPending, startTransition] = useTransition()
 
   const filtered = useMemo(() => {
@@ -807,13 +828,39 @@ export function MonthClient({
                 <input type="hidden" name="category" value={categoryDraft} />
                 <input type="hidden" name="subcategory" value={subcategoryDraft} />
 
+                {selectedTx.bank_category || selectedTx.bank_op_type ? (
+                  <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    💡 <span className="font-medium">Classification banque :</span>{' '}
+                    {selectedTx.bank_op_type ? (
+                      <span className="rounded bg-background px-1.5 py-0.5 font-mono">
+                        {selectedTx.bank_op_type}
+                      </span>
+                    ) : null}
+                    {selectedTx.bank_category ? (
+                      <>
+                        {' · '}
+                        <span className="rounded bg-background px-1.5 py-0.5 font-mono">
+                          {selectedTx.bank_category}
+                        </span>
+                      </>
+                    ) : null}
+                    {selectedTx.bank_subcategory ? (
+                      <>
+                        {' / '}
+                        <span className="rounded bg-background px-1.5 py-0.5 font-mono">
+                          {selectedTx.bank_subcategory}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <CategoryCombobox
                   label="Catégorie"
                   value={categoryDraft}
                   items={categoryItems}
                   onChange={(v) => {
                     setCategoryDraft(v)
-                    // Si la catégorie change, on remet à zéro la sous-catégorie
                     if (v !== categoryDraft) setSubcategoryDraft('')
                   }}
                   onRename={handleRenameCategoryWrapper}

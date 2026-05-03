@@ -96,6 +96,9 @@ export async function parseCSVFile(
       amount: normalized.amount,
       raw_label: normalized.raw_label,
       hash,
+      bank_op_type: normalized.bank_op_type,
+      bank_category: normalized.bank_category,
+      bank_subcategory: normalized.bank_subcategory,
     })
   }
 

@@ -33,6 +33,10 @@ const COLUMN_KEYS = {
   reference: ['reference', 'ref'],
   debit: ['debit', 'debiteuros'],
   credit: ['credit', 'crediteuros'],
+  // Métadonnées bancaires (pré-classification fournie par BP)
+  bankOpType: ['typeoperation', 'type'],
+  bankCategory: ['categorie'],
+  bankSubcategory: ['souscategorie', 'subcategorie'],
 } as const
 
 function normalizeColumnKey(key: string): string {
@@ -85,6 +89,12 @@ export type NormalizedRow = {
   raw_label: string
   /** Présent si la banque fournit un identifiant unique pour la transaction. */
   reference: string | null
+  /** Type d'opération brute selon BP (Carte bancaire, Virement, …). */
+  bank_op_type: string | null
+  /** Catégorie brute selon BP (Alimentation, Loisirs, …). */
+  bank_category: string | null
+  /** Sous-catégorie brute selon BP (Restaurant, Pharmacie, …). */
+  bank_subcategory: string | null
 }
 
 export function normalizeBanquePopulaireRow(
@@ -96,6 +106,9 @@ export function normalizeBanquePopulaireRow(
   const debitColumn = findColumn(row, COLUMN_KEYS.debit)
   const creditColumn = findColumn(row, COLUMN_KEYS.credit)
   const referenceColumn = findColumn(row, COLUMN_KEYS.reference)
+  const bankOpTypeColumn = findColumn(row, COLUMN_KEYS.bankOpType)
+  const bankCategoryColumn = findColumn(row, COLUMN_KEYS.bankCategory)
+  const bankSubcategoryColumn = findColumn(row, COLUMN_KEYS.bankSubcategory)
 
   if (!dateColumn || !labelColumn || (!debitColumn && !creditColumn)) {
     return {
@@ -160,10 +173,19 @@ export function normalizeBanquePopulaireRow(
     }
   }
 
+  const bankOpType = bankOpTypeColumn ? (row[bankOpTypeColumn] ?? '').trim() : ''
+  const bankCategory = bankCategoryColumn ? (row[bankCategoryColumn] ?? '').trim() : ''
+  const bankSubcategory = bankSubcategoryColumn
+    ? (row[bankSubcategoryColumn] ?? '').trim()
+    : ''
+
   return {
     op_date: opDate,
     amount,
     raw_label: labelRaw.trim(),
     reference: referenceRaw === '' ? null : referenceRaw,
+    bank_op_type: bankOpType === '' ? null : bankOpType,
+    bank_category: bankCategory === '' ? null : bankCategory,
+    bank_subcategory: bankSubcategory === '' ? null : bankSubcategory,
   }
 }

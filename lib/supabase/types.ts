@@ -56,6 +56,9 @@ export type Database = {
           raw_label: string
           hash: string
           imported_at: string
+          bank_op_type: string | null
+          bank_category: string | null
+          bank_subcategory: string | null
         }
         Insert: {
           id?: string
@@ -66,6 +69,9 @@ export type Database = {
           raw_label: string
           hash: string
           imported_at?: string
+          bank_op_type?: string | null
+          bank_category?: string | null
+          bank_subcategory?: string | null
         }
         Update: {
           id?: string
@@ -76,6 +82,9 @@ export type Database = {
           raw_label?: string
           hash?: string
           imported_at?: string
+          bank_op_type?: string | null
+          bank_category?: string | null
+          bank_subcategory?: string | null
         }
         Relationships: [
           {

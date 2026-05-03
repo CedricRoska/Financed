@@ -11,6 +11,10 @@ export type ParsedTransaction = {
   raw_label: string
   /** sha256 hex de (op_date | amount.toFixed(2) | normalizeLabel(raw_label)) */
   hash: string
+  /** Métadonnées bancaires brutes (pré-classification BP) */
+  bank_op_type: string | null
+  bank_category: string | null
+  bank_subcategory: string | null
 }
 
 export type ImportError = {

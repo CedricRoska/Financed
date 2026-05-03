@@ -137,6 +137,9 @@ export async function commitImport(
     amount: t.amount,
     raw_label: t.raw_label,
     hash: t.hash,
+    bank_op_type: t.bank_op_type,
+    bank_category: t.bank_category,
+    bank_subcategory: t.bank_subcategory,
   }))
 
   const { error: insertError } = await supabase.from('transactions').insert(rows)
