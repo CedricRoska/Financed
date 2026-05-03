@@ -44,7 +44,7 @@ export default async function MonthDetailPage({
   const { data: transactions } = await supabase
     .from('transactions')
     .select(
-      'id, op_date, amount, raw_label, transaction_annotations(category, comment, pro_perso, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note)',
+      'id, op_date, amount, raw_label, transaction_annotations(category, subcategory, comment, pro_perso, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note)',
     )
     .eq('account_id', accountId)
     .gte('op_date', startDate)
@@ -65,7 +65,6 @@ export default async function MonthDetailPage({
   })
 
   const userCategories = await getUserCategories()
-  const knownCategories = userCategories.map((c) => c.name)
 
   return (
     <AuthenticatedShell>
@@ -75,7 +74,7 @@ export default async function MonthDetailPage({
         isHybrid={account.is_hybrid}
         monthLabel={formatMonthLabelFR(monthSlug)}
         transactions={enriched}
-        knownCategories={knownCategories}
+        userCategories={userCategories}
       />
     </AuthenticatedShell>
   )

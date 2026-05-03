@@ -41,8 +41,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { CategoryBreakdown } from './CategoryBreakdown'
 import { bulkApplyAnnotation } from './bulk-actions'
-import { DEFAULT_CATEGORY_SUGGESTIONS } from '@/lib/categories/defaults'
+import { CategoryCombobox } from '@/components/category-combobox'
 import { activateHybrid } from '@/app/accounts/[id]/actions'
+import {
+  deleteCategory,
+  deleteSubcategory,
+  renameCategory,
+  renameSubcategory,
+} from '@/app/settings/categories-actions'
 import {
   resolveExpectedRefund,
   saveAnnotation,
@@ -83,6 +89,7 @@ const RESOLVE_KIND_LABEL: Record<string, string> = {
 
 export type AnnotationLite = {
   category: string | null
+  subcategory: string | null
   comment: string | null
   pro_perso: 'pro' | 'perso' | null
   expected_refund_from: string | null
@@ -103,20 +110,26 @@ export type EnrichedTransaction = {
 
 type StatusFilter = 'all' | 'toProcess' | 'validated'
 
+export type UserCategoryWithSubs = {
+  name: string
+  count: number
+  subcategories: { name: string; count: number }[]
+}
+
 export function MonthClient({
   accountId,
   accountName,
   isHybrid,
   monthLabel,
   transactions,
-  knownCategories,
+  userCategories,
 }: {
   accountId: string
   accountName: string
   isHybrid: boolean
   monthLabel: string
   transactions: EnrichedTransaction[]
-  knownCategories: string[]
+  userCategories: UserCategoryWithSubs[]
 }) {
   const router = useRouter()
   const [selectedTx, setSelectedTx] = useState<EnrichedTransaction | null>(null)
@@ -127,6 +140,7 @@ export function MonthClient({
   const [lastClickedId, setLastClickedId] = useState<string | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkCategory, setBulkCategory] = useState('')
+  const [bulkSubcategory, setBulkSubcategory] = useState('')
   const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | 'unset' | 'keep'>('keep')
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const focusedRowRef = useRef<HTMLTableRowElement | null>(null)
@@ -137,6 +151,15 @@ export function MonthClient({
     | { kind: 'bulk' }
     | null
   >(null)
+  // State du formulaire (controlled) pour piloter la Combobox
+  const [categoryDraft, setCategoryDraft] = useState<string>('')
+  const [subcategoryDraft, setSubcategoryDraft] = useState<string>('')
+
+  // Reset les drafts quand on ouvre une autre transaction
+  useEffect(() => {
+    setCategoryDraft(selectedTx?.annotation?.category ?? '')
+    setSubcategoryDraft(selectedTx?.annotation?.subcategory ?? '')
+  }, [selectedTx?.id, selectedTx?.annotation?.category, selectedTx?.annotation?.subcategory])
   const [isPending, startTransition] = useTransition()
 
   const filtered = useMemo(() => {
@@ -155,12 +178,51 @@ export function MonthClient({
     })
   }, [transactions, tab, statusFilter, search])
 
-  // Datalist : suggestions par défaut + catégories que l'utilisateur a déjà utilisées
-  const allCategorySuggestions = useMemo(() => {
-    const set = new Set<string>(DEFAULT_CATEGORY_SUGGESTIONS)
-    for (const c of knownCategories) set.add(c)
-    return [...set].sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [knownCategories])
+  // Items pour la Combobox catégorie (avec counts)
+  const categoryItems = useMemo(
+    () => userCategories.map((c) => ({ name: c.name, count: c.count })),
+    [userCategories],
+  )
+
+  // Items pour la Combobox sous-catégorie, filtrés par catégorie sélectionnée
+  const subcategoryItems = useMemo(() => {
+    const cat = userCategories.find((c) => c.name === categoryDraft)
+    return cat ? cat.subcategories : []
+  }, [userCategories, categoryDraft])
+
+  // Items pour le bulk dialog (toutes les catégories quel que soit le draft)
+  const bulkCategoryItems = useMemo(
+    () => userCategories.map((c) => ({ name: c.name, count: c.count })),
+    [userCategories],
+  )
+
+  // Helpers Server Actions wrapping (FormData → direct args)
+  async function handleRenameCategoryWrapper(oldName: string, newName: string) {
+    const fd = new FormData()
+    fd.set('old_name', oldName)
+    fd.set('new_name', newName)
+    await renameCategory(fd)
+    router.refresh()
+  }
+
+  async function handleDeleteCategoryWrapper(name: string) {
+    const fd = new FormData()
+    fd.set('name', name)
+    await deleteCategory(fd)
+    router.refresh()
+  }
+
+  async function handleRenameSubWrapper(oldName: string, newName: string) {
+    if (!categoryDraft) throw new Error('Pas de catégorie parente')
+    await renameSubcategory(categoryDraft, oldName, newName)
+    router.refresh()
+  }
+
+  async function handleDeleteSubWrapper(name: string) {
+    if (!categoryDraft) throw new Error('Pas de catégorie parente')
+    await deleteSubcategory(categoryDraft, name)
+    router.refresh()
+  }
 
   // Gère Shift+Click pour sélection en intervalle, click simple pour ouvrir Sheet
   function handleRowClick(t: EnrichedTransaction, e: React.MouseEvent) {
@@ -269,6 +331,7 @@ export function MonthClient({
     if (selectedIds.size === 0) return
     const ids = Array.from(selectedIds)
     const trimmedCategory = bulkCategory.trim()
+    const trimmedSubcategory = bulkSubcategory.trim()
     const proPersoValue =
       bulkProPerso === 'keep'
         ? undefined
@@ -281,17 +344,17 @@ export function MonthClient({
         const result = await bulkApplyAnnotation({
           transactionIds: ids,
           accountId,
-          ...(trimmedCategory !== ''
-            ? { category: trimmedCategory }
-            : bulkProPerso === 'keep'
-              ? {}
-              : {}),
+          ...(trimmedCategory !== '' ? { category: trimmedCategory } : {}),
+          ...(trimmedCategory !== '' && trimmedSubcategory !== ''
+            ? { subcategory: trimmedSubcategory }
+            : {}),
           ...(proPersoValue !== undefined ? { proPerso: proPersoValue } : {}),
         })
         toast.success(`${result.updated} transaction${result.updated > 1 ? 's' : ''} mises à jour`)
         clearSelection()
         setBulkOpen(false)
         setBulkCategory('')
+        setBulkSubcategory('')
         setBulkProPerso('keep')
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Erreur bulk update')
@@ -632,7 +695,14 @@ export function MonthClient({
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1.5">
                             {t.annotation?.category ? (
-                              <Badge variant="secondary">{t.annotation.category}</Badge>
+                              <Badge variant="secondary">
+                                {t.annotation.category}
+                                {t.annotation.subcategory ? (
+                                  <span className="ml-1 font-normal text-muted-foreground">
+                                    / {t.annotation.subcategory}
+                                  </span>
+                                ) : null}
+                              </Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>
                             )}
@@ -734,22 +804,44 @@ export function MonthClient({
                 <input type="hidden" name="transaction_id" value={selectedTx.id} />
                 <input type="hidden" name="account_id" value={accountId} />
 
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="category">Catégorie</Label>
-                  <Input
-                    id="category"
-                    name="category"
-                    list="category-suggestions"
-                    maxLength={100}
-                    defaultValue={selectedTx.annotation?.category ?? ''}
-                    placeholder="Ex. Courses, Loyer, Salaire..."
-                  />
-                  <datalist id="category-suggestions">
-                    {allCategorySuggestions.map((suggestion) => (
-                      <option key={suggestion} value={suggestion} />
-                    ))}
-                  </datalist>
-                </div>
+                <input type="hidden" name="category" value={categoryDraft} />
+                <input type="hidden" name="subcategory" value={subcategoryDraft} />
+
+                <CategoryCombobox
+                  label="Catégorie"
+                  value={categoryDraft}
+                  items={categoryItems}
+                  onChange={(v) => {
+                    setCategoryDraft(v)
+                    // Si la catégorie change, on remet à zéro la sous-catégorie
+                    if (v !== categoryDraft) setSubcategoryDraft('')
+                  }}
+                  onRename={handleRenameCategoryWrapper}
+                  onDelete={handleDeleteCategoryWrapper}
+                  placeholder="Ex. Abonnements, Courses, Loyer…"
+                />
+
+                <CategoryCombobox
+                  label="Sous-catégorie"
+                  value={subcategoryDraft}
+                  items={subcategoryItems}
+                  onChange={setSubcategoryDraft}
+                  onRename={handleRenameSubWrapper}
+                  onDelete={handleDeleteSubWrapper}
+                  placeholder={
+                    categoryDraft
+                      ? `Ex. Claude, Spotify… (sous "${categoryDraft}")`
+                      : 'Sélectionne d\'abord une catégorie'
+                  }
+                  disabled={!categoryDraft}
+                  hint={
+                    !categoryDraft ? (
+                      <span className="text-xs text-muted-foreground">
+                        Choisis une catégorie d&apos;abord
+                      </span>
+                    ) : null
+                  }
+                />
 
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
@@ -1061,26 +1153,38 @@ export function MonthClient({
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="bulk-category">Catégorie</Label>
-              <Input
-                id="bulk-category"
-                list="bulk-category-suggestions"
-                value={bulkCategory}
-                onChange={(e) => setBulkCategory(e.target.value)}
-                maxLength={100}
-                placeholder="Ex. Courses"
-                autoFocus
-              />
-              <datalist id="bulk-category-suggestions">
-                {allCategorySuggestions.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-              <p className="text-xs text-muted-foreground">
-                Vide = ne pas modifier la catégorie existante.
-              </p>
-            </div>
+            <CategoryCombobox
+              label="Catégorie"
+              value={bulkCategory}
+              items={bulkCategoryItems}
+              onChange={(v) => {
+                setBulkCategory(v)
+                if (v !== bulkCategory) setBulkSubcategory('')
+              }}
+              onRename={handleRenameCategoryWrapper}
+              onDelete={handleDeleteCategoryWrapper}
+              placeholder="Ex. Abonnements"
+              hint={
+                <span className="text-xs text-muted-foreground">
+                  Vide = ne pas modifier
+                </span>
+              }
+            />
+
+            <CategoryCombobox
+              label="Sous-catégorie"
+              value={bulkSubcategory}
+              items={
+                userCategories.find((c) => c.name === bulkCategory)?.subcategories ?? []
+              }
+              onChange={setBulkSubcategory}
+              placeholder={
+                bulkCategory
+                  ? `Ex. Claude (sous "${bulkCategory}")`
+                  : "Choisis d'abord une catégorie"
+              }
+              disabled={!bulkCategory}
+            />
 
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">

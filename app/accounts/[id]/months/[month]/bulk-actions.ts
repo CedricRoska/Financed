@@ -9,6 +9,7 @@ type BulkApplyInput = {
   transactionIds: string[]
   accountId: string
   category?: string | null
+  subcategory?: string | null
   proPerso?: 'pro' | 'perso' | null | 'unset'
 }
 
@@ -25,6 +26,7 @@ export async function bulkApplyAnnotation({
   transactionIds,
   accountId,
   category,
+  subcategory,
   proPerso,
 }: BulkApplyInput): Promise<{ updated: number }> {
   if (transactionIds.length === 0) {
@@ -37,10 +39,9 @@ export async function bulkApplyAnnotation({
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Récupère les annotations existantes pour merger proprement
   const { data: existing } = await supabase
     .from('transaction_annotations')
-    .select('transaction_id, category, pro_perso, comment, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note')
+    .select('transaction_id, category, subcategory, pro_perso, comment, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note')
     .in('transaction_id', transactionIds)
     .eq('user_id', user.id)
 
@@ -58,11 +59,14 @@ export async function bulkApplyAnnotation({
           : proPerso
     const nextCategory =
       category === undefined ? (prev?.category ?? null) : category
+    const nextSubcategory =
+      subcategory === undefined ? (prev?.subcategory ?? null) : subcategory
 
     return {
       transaction_id: transactionId,
       user_id: user.id,
       category: nextCategory,
+      subcategory: nextCategory ? nextSubcategory : null, // sub uniquement si cat
       pro_perso: nextProPerso,
       comment: prev?.comment ?? null,
       expected_refund_from: prev?.expected_refund_from ?? null,

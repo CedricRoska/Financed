@@ -100,6 +100,7 @@ export type Database = {
           transaction_id: string
           user_id: string
           category: string | null
+          subcategory: string | null
           comment: string | null
           pro_perso: 'pro' | 'perso' | null
           expected_refund_from: string | null
@@ -115,6 +116,7 @@ export type Database = {
           transaction_id: string
           user_id: string
           category?: string | null
+          subcategory?: string | null
           comment?: string | null
           pro_perso?: 'pro' | 'perso' | null
           expected_refund_from?: string | null
@@ -130,6 +132,7 @@ export type Database = {
           transaction_id?: string
           user_id?: string
           category?: string | null
+          subcategory?: string | null
           comment?: string | null
           pro_perso?: 'pro' | 'perso' | null
           expected_refund_from?: string | null

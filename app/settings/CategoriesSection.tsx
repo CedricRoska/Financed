@@ -84,37 +84,52 @@ export function CategoriesSection({ categories }: { categories: UserCategory[] }
         <Card className="p-0 overflow-hidden">
           <ul className="divide-y">
             {categories.map((cat) => (
-              <li
-                key={cat.name}
-                className="flex items-center justify-between gap-3 px-5 py-3"
-              >
-                <div className="flex flex-1 items-center gap-3">
-                  <Badge variant="secondary" className="font-medium">
-                    {cat.name}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {cat.count} transaction{cat.count > 1 ? 's' : ''}
-                  </span>
+              <li key={cat.name} className="flex flex-col gap-2 px-5 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-1 items-center gap-3">
+                    <Badge variant="secondary" className="font-medium">
+                      {cat.name}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {cat.count} transaction{cat.count > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openRename(cat)}
+                      aria-label={`Renommer ${cat.name}`}
+                    >
+                      <PencilIcon className="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteTarget(cat)}
+                      aria-label={`Supprimer ${cat.name}`}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2Icon className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openRename(cat)}
-                    aria-label={`Renommer ${cat.name}`}
-                  >
-                    <PencilIcon className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteTarget(cat)}
-                    aria-label={`Supprimer ${cat.name}`}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2Icon className="size-4" />
-                  </Button>
-                </div>
+                {cat.subcategories.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pl-2">
+                    {cat.subcategories.map((sub) => (
+                      <Badge
+                        key={sub.name}
+                        variant="outline"
+                        className="font-normal"
+                      >
+                        {sub.name}
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          {sub.count}
+                        </span>
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

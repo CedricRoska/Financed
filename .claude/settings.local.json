@@ -29,7 +29,8 @@
       "Bash(npx shadcn@latest add sonner --yes)",
       "Bash(npx shadcn@latest add chart --yes)",
       "Bash(npx shadcn@latest add dropdown-menu alert-dialog command dialog --yes)",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(npx shadcn@latest add popover --yes)"
     ]
   }
 }

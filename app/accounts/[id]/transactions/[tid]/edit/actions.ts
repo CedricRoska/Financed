@@ -53,11 +53,17 @@ export async function saveAnnotation(formData: FormData): Promise<void> {
   const categoryRaw = emptyToNull(formData.get('category'))
   const category = categoryRaw && categoryRaw.length >= 2 ? categoryRaw : null
 
+  const subcategoryRaw = emptyToNull(formData.get('subcategory'))
+  // Sous-catégorie ne peut exister que si une catégorie est définie
+  const subcategory =
+    category && subcategoryRaw && subcategoryRaw.length >= 2 ? subcategoryRaw : null
+
   const { error } = await supabase.from('transaction_annotations').upsert(
     {
       transaction_id: transactionId,
       user_id: user.id,
       category,
+      subcategory,
       comment: emptyToNull(formData.get('comment')),
       pro_perso: proPerso,
       expected_refund_from: emptyToNull(formData.get('expected_refund_from')),
