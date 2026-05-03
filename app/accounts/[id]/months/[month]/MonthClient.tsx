@@ -419,18 +419,30 @@ export function MonthClient({
     if (!canLettrer) return
     const refundTx = selectedPositives[0]!
     const expenseTxIds = selectedNegatives.map((t) => t.id)
+    const trimmedCategory = bulkCategory.trim()
+    const trimmedSubcategory = bulkSubcategory.trim()
+    const proPersoValue = bulkProPerso === '' ? undefined : bulkProPerso
+
     startTransition(async () => {
       try {
         const result = await bulkLettrage({
           expenseTxIds,
           refundTxId: refundTx.id,
           accountId,
+          ...(trimmedCategory !== '' ? { category: trimmedCategory } : {}),
+          ...(trimmedCategory !== '' && trimmedSubcategory !== ''
+            ? { subcategory: trimmedSubcategory }
+            : {}),
+          ...(proPersoValue !== undefined ? { proPerso: proPersoValue } : {}),
         })
         toast.success(
           `${result.lettered} dépense${result.lettered > 1 ? 's' : ''} lettrée${result.lettered > 1 ? 's' : ''}`,
         )
         clearSelection()
         setBulkOpen(false)
+        setBulkCategory('')
+        setBulkSubcategory('')
+        setBulkProPerso('')
         router.refresh()
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Erreur lettrage')
@@ -1306,9 +1318,14 @@ export function MonthClient({
                     </span>{' '}
                     («&nbsp;{selectedPositives[0]!.raw_label}&nbsp;») et{' '}
                     {selectedNegatives.length} dépense{selectedNegatives.length > 1 ? 's' : ''}.
-                    Veux-tu marquer{' '}
+                    Lettrer marque{' '}
                     {selectedNegatives.length > 1 ? 'ces dépenses' : 'cette dépense'} comme
-                    remboursée{selectedNegatives.length > 1 ? 's' : ''} par cette entrée&nbsp;?
+                    remboursée{selectedNegatives.length > 1 ? 's' : ''} par cette entrée.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700">
+                    Si tu remplis Catégorie / Sous-catégorie / Pro-Perso ci-dessous, ils
+                    s&apos;appliqueront aussi à toutes les lignes sélectionnées (entrée
+                    comprise).
                   </p>
                   <Button
                     type="button"

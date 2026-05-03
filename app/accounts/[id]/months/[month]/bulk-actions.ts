@@ -106,23 +106,34 @@ const moneyFormatter = new Intl.NumberFormat('fr-FR', {
 })
 
 /**
- * Server Action : lettre N dépenses (négatives) avec UNE entrée (positive).
+ * Server Action : lettre N dépenses (négatives) avec UNE entrée (positive),
+ * et optionnellement applique catégorie/sous-catégorie/pro_perso à TOUTES
+ * les lignes (dépenses + entrée).
  *
- * Pour chaque dépense, marque le remboursement comme résolu en mode `wire`,
- * en pointant explicitement vers la transaction positive (label, date, montant).
- * Préserve la catégorie/subcategory/comment/pro_perso existants — ne touche
- * que les champs liés au remboursement.
+ * Pour chaque dépense :
+ *   - marque le remboursement comme résolu en mode `wire` pointant vers
+ *     la transaction positive (label, date, montant)
+ *   - efface le flag `to_investigate` (le user a maintenant compris la dépense)
  *
- * Retourne le nombre de dépenses lettrées.
+ * Pour la transaction positive et les dépenses :
+ *   - applique category/subcategory/proPerso si fournis
+ *
+ * Retourne le nombre de lignes affectées (lettered + refund line).
  */
 export async function bulkLettrage({
   expenseTxIds,
   refundTxId,
   accountId,
+  category,
+  subcategory,
+  proPerso,
 }: {
   expenseTxIds: string[]
   refundTxId: string
   accountId: string
+  category?: string | null
+  subcategory?: string | null
+  proPerso?: 'pro' | 'perso'
 }): Promise<{ lettered: number }> {
   if (expenseTxIds.length === 0) {
     return { lettered: 0 }
@@ -153,12 +164,14 @@ export async function bulkLettrage({
   const refundLabel = refundTx.raw_label.trim().slice(0, 80)
   const note = `Lettré avec ligne du ${refundDate} (${refundAmount}) — « ${refundLabel} »`
 
+  const allTxIds = [...expenseTxIds, refundTxId]
+
   const { data: existing } = await supabase
     .from('transaction_annotations')
     .select(
-      'transaction_id, category, subcategory, pro_perso, comment, to_investigate',
+      'transaction_id, category, subcategory, pro_perso, comment, to_investigate, expected_refund_from, expected_refund_label, refund_resolved_at, refund_resolved_kind, refund_resolved_note',
     )
-    .in('transaction_id', expenseTxIds)
+    .in('transaction_id', allTxIds)
     .eq('user_id', user.id)
 
   const existingByTxId = new Map(
@@ -166,22 +179,50 @@ export async function bulkLettrage({
   )
 
   const nowIso = new Date().toISOString()
+  const expenseIdSet = new Set(expenseTxIds)
 
-  const upserts = expenseTxIds.map((transactionId) => {
+  const upserts = allTxIds.map((transactionId) => {
     const prev = existingByTxId.get(transactionId)
+    const isExpense = expenseIdSet.has(transactionId)
+
+    const nextCategory =
+      category === undefined ? (prev?.category ?? null) : category
+    const nextSubcategory =
+      subcategory === undefined ? (prev?.subcategory ?? null) : subcategory
+    const nextProPerso =
+      proPerso === undefined ? (prev?.pro_perso ?? null) : proPerso
+
+    if (isExpense) {
+      return {
+        transaction_id: transactionId,
+        user_id: user.id,
+        category: nextCategory,
+        subcategory: nextCategory ? nextSubcategory : null,
+        pro_perso: nextProPerso,
+        comment: prev?.comment ?? null,
+        to_investigate: false,
+        expected_refund_from: refundLabel,
+        expected_refund_label: `${refundDate} · ${refundAmount}`,
+        refund_resolved_at: nowIso,
+        refund_resolved_kind: 'wire' as const,
+        refund_resolved_note: note,
+      }
+    }
+
+    // Refund line itself : just propagate the bulk fields, leave refund metadata untouched.
     return {
       transaction_id: transactionId,
       user_id: user.id,
-      category: prev?.category ?? null,
-      subcategory: prev?.subcategory ?? null,
-      pro_perso: prev?.pro_perso ?? null,
+      category: nextCategory,
+      subcategory: nextCategory ? nextSubcategory : null,
+      pro_perso: nextProPerso,
       comment: prev?.comment ?? null,
       to_investigate: prev?.to_investigate ?? false,
-      expected_refund_from: refundLabel,
-      expected_refund_label: `${refundDate} · ${refundAmount}`,
-      refund_resolved_at: nowIso,
-      refund_resolved_kind: 'wire' as const,
-      refund_resolved_note: note,
+      expected_refund_from: prev?.expected_refund_from ?? null,
+      expected_refund_label: prev?.expected_refund_label ?? null,
+      refund_resolved_at: prev?.refund_resolved_at ?? null,
+      refund_resolved_kind: prev?.refund_resolved_kind ?? null,
+      refund_resolved_note: prev?.refund_resolved_note ?? null,
     }
   })
 
@@ -193,7 +234,6 @@ export async function bulkLettrage({
     throw new Error(`Erreur lettrage : ${error.message}`)
   }
 
-  const allTxIds = [...expenseTxIds, refundTxId]
   const { data: txDates } = await supabase
     .from('transactions')
     .select('op_date')
@@ -206,5 +246,5 @@ export async function bulkLettrage({
   }
   revalidatePath(`/accounts/${accountId}`)
 
-  return { lettered: upserts.length }
+  return { lettered: expenseTxIds.length }
 }
