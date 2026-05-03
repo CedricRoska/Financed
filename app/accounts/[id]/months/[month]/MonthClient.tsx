@@ -677,6 +677,7 @@ export function MonthClient({
                   <TableRow>
                     <TableHead className="w-[100px]">Date</TableHead>
                     <TableHead>Libellé</TableHead>
+                    <TableHead className="w-[130px]">Type</TableHead>
                     <TableHead>Catégorie</TableHead>
                     <TableHead className="text-right">Montant</TableHead>
                     <TableHead className="w-[140px]">Statut</TableHead>
@@ -713,6 +714,9 @@ export function MonthClient({
                           {dateFormatter.format(new Date(t.op_date))}
                         </TableCell>
                         <TableCell className="font-medium">{t.raw_label}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {t.bank_op_type ?? '—'}
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1.5">
                             {t.annotation?.category ? (
