@@ -42,11 +42,22 @@ import { cn } from '@/lib/utils'
 import { CategoryBreakdown } from './CategoryBreakdown'
 import { bulkApplyAnnotation } from './bulk-actions'
 import { DEFAULT_CATEGORY_SUGGESTIONS } from '@/lib/categories/defaults'
+import { activateHybrid } from '@/app/accounts/[id]/actions'
 import {
   resolveExpectedRefund,
   saveAnnotation,
   unresolveExpectedRefund,
 } from '@/app/accounts/[id]/transactions/[tid]/edit/actions'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 const amountFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
@@ -119,6 +130,13 @@ export function MonthClient({
   const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | 'unset' | 'keep'>('keep')
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const focusedRowRef = useRef<HTMLTableRowElement | null>(null)
+  // Confirmation hybride : stocke les data du formulaire en attente quand l'utilisateur
+  // tente de classer Pro/Perso sur un compte non-hybride
+  const [hybridConfirm, setHybridConfirm] = useState<
+    | { kind: 'single'; formData: FormData; advance: boolean }
+    | { kind: 'bulk' }
+    | null
+  >(null)
   const [isPending, startTransition] = useTransition()
 
   const filtered = useMemo(() => {
@@ -247,7 +265,7 @@ export function MonthClient({
     setFocusedIndex(null)
   }, [tab, statusFilter, search])
 
-  function handleBulkApply() {
+  function performBulkApply() {
     if (selectedIds.size === 0) return
     const ids = Array.from(selectedIds)
     const trimmedCategory = bulkCategory.trim()
@@ -281,6 +299,29 @@ export function MonthClient({
     })
   }
 
+  function handleBulkApply() {
+    // Si compte non-hybride et user a choisi Pro/Perso bulk, demander d'activer
+    if (!isHybrid && (bulkProPerso === 'pro' || bulkProPerso === 'perso')) {
+      setHybridConfirm({ kind: 'bulk' })
+      return
+    }
+    performBulkApply()
+  }
+
+  function confirmHybridForBulk() {
+    startTransition(async () => {
+      try {
+        await activateHybrid(accountId)
+        toast.success('Mode hybride activé sur ce compte')
+        router.refresh()
+        setHybridConfirm(null)
+        performBulkApply()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Impossible d'activer l'hybride")
+      }
+    })
+  }
+
   const stats = useMemo(() => {
     const total = filtered.reduce((sum, t) => sum + t.amount, 0)
     const income = filtered.filter((t) => t.amount > 0).reduce((sum, t) => sum + t.amount, 0)
@@ -305,7 +346,7 @@ export function MonthClient({
     toast.info("C'était la dernière transaction du mois !")
   }
 
-  function handleSubmit(formData: FormData, advance: boolean = false) {
+  function performSave(formData: FormData, advance: boolean) {
     startTransition(async () => {
       try {
         await saveAnnotation(formData)
@@ -320,6 +361,43 @@ export function MonthClient({
         toast.error(e instanceof Error ? e.message : "Impossible d'enregistrer")
       }
     })
+  }
+
+  function handleSubmit(formData: FormData, advance: boolean = false) {
+    // Si compte non-hybride et user a coché Pro ou Perso, demander d'activer
+    const proPerso = formData.get('pro_perso')
+    const wantsProPerso = proPerso === 'pro' || proPerso === 'perso'
+
+    if (!isHybrid && wantsProPerso) {
+      setHybridConfirm({ kind: 'single', formData, advance })
+      return
+    }
+
+    performSave(formData, advance)
+  }
+
+  function confirmHybridActivation() {
+    if (!hybridConfirm) return
+    startTransition(async () => {
+      try {
+        await activateHybrid(accountId)
+        toast.success('Mode hybride activé sur ce compte')
+        router.refresh()
+        if (hybridConfirm.kind === 'single') {
+          performSave(hybridConfirm.formData, hybridConfirm.advance)
+        } else {
+          // bulk : on reposera la question via l'UI bulk dialog
+        }
+        setHybridConfirm(null)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Impossible d'activer l'hybride")
+      }
+    })
+  }
+
+  function cancelHybridActivation() {
+    setHybridConfirm(null)
+    toast.info('Activation annulée — le classement Pro/Perso a été remis à zéro')
   }
 
   function handleResolve(formData: FormData) {
@@ -673,44 +751,49 @@ export function MonthClient({
                   </datalist>
                 </div>
 
-                {isHybrid ? (
-                  <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
                     <Label>Pro ou perso ?</Label>
-                    <RadioGroup
-                      name="pro_perso"
-                      defaultValue={selectedTx.annotation?.pro_perso ?? ''}
-                      className="flex gap-6"
-                    >
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="" id={`pp-none-${selectedTx.id}`} />
-                        <Label
-                          htmlFor={`pp-none-${selectedTx.id}`}
-                          className="cursor-pointer font-normal"
-                        >
-                          Non classé
-                        </Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="pro" id={`pp-pro-${selectedTx.id}`} />
-                        <Label
-                          htmlFor={`pp-pro-${selectedTx.id}`}
-                          className="cursor-pointer font-normal"
-                        >
-                          Pro
-                        </Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="perso" id={`pp-perso-${selectedTx.id}`} />
-                        <Label
-                          htmlFor={`pp-perso-${selectedTx.id}`}
-                          className="cursor-pointer font-normal"
-                        >
-                          Perso
-                        </Label>
-                      </div>
-                    </RadioGroup>
+                    {!isHybrid ? (
+                      <span className="text-xs text-muted-foreground">
+                        Activera le mode hybride
+                      </span>
+                    ) : null}
                   </div>
-                ) : null}
+                  <RadioGroup
+                    name="pro_perso"
+                    defaultValue={selectedTx.annotation?.pro_perso ?? ''}
+                    className="flex gap-6"
+                  >
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="" id={`pp-none-${selectedTx.id}`} />
+                      <Label
+                        htmlFor={`pp-none-${selectedTx.id}`}
+                        className="cursor-pointer font-normal"
+                      >
+                        Non classé
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="pro" id={`pp-pro-${selectedTx.id}`} />
+                      <Label
+                        htmlFor={`pp-pro-${selectedTx.id}`}
+                        className="cursor-pointer font-normal"
+                      >
+                        Pro
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="perso" id={`pp-perso-${selectedTx.id}`} />
+                      <Label
+                        htmlFor={`pp-perso-${selectedTx.id}`}
+                        className="cursor-pointer font-normal"
+                      >
+                        Perso
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
 
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="comment">
@@ -926,6 +1009,44 @@ export function MonthClient({
         </div>
       ) : null}
 
+      {/* Confirmation activation hybride */}
+      <AlertDialog
+        open={hybridConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) cancelHybridActivation()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Activer le mode hybride pro / perso ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ce compte n&apos;est pas encore configuré en mode hybride. Tu vas pouvoir
+              classer chaque transaction comme <strong>Pro</strong> ou{' '}
+              <strong>Perso</strong>, et basculer entre les deux vues depuis l&apos;onglet en
+              haut du mois.
+              <br />
+              <br />
+              Tu peux le désactiver plus tard depuis les paramètres du compte.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (hybridConfirm?.kind === 'single') {
+                  confirmHybridActivation()
+                } else if (hybridConfirm?.kind === 'bulk') {
+                  confirmHybridForBulk()
+                }
+              }}
+              disabled={isPending}
+            >
+              {isPending ? 'Activation…' : 'Activer et enregistrer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Bulk apply dialog */}
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent>
@@ -961,43 +1082,48 @@ export function MonthClient({
               </p>
             </div>
 
-            {isHybrid ? (
-              <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
                 <Label>Pro / Perso</Label>
-                <RadioGroup
-                  value={bulkProPerso}
-                  onValueChange={(v) =>
-                    setBulkProPerso(v as 'pro' | 'perso' | 'unset' | 'keep')
-                  }
-                  className="flex flex-wrap gap-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="keep" id="bulk-keep" />
-                    <Label htmlFor="bulk-keep" className="cursor-pointer font-normal">
-                      Ne pas modifier
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="pro" id="bulk-pro" />
-                    <Label htmlFor="bulk-pro" className="cursor-pointer font-normal">
-                      Pro
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="perso" id="bulk-perso" />
-                    <Label htmlFor="bulk-perso" className="cursor-pointer font-normal">
-                      Perso
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="unset" id="bulk-unset" />
-                    <Label htmlFor="bulk-unset" className="cursor-pointer font-normal">
-                      Non classé
-                    </Label>
-                  </div>
-                </RadioGroup>
+                {!isHybrid ? (
+                  <span className="text-xs text-muted-foreground">
+                    Activera le mode hybride
+                  </span>
+                ) : null}
               </div>
-            ) : null}
+              <RadioGroup
+                value={bulkProPerso}
+                onValueChange={(v) =>
+                  setBulkProPerso(v as 'pro' | 'perso' | 'unset' | 'keep')
+                }
+                className="flex flex-wrap gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="keep" id="bulk-keep" />
+                  <Label htmlFor="bulk-keep" className="cursor-pointer font-normal">
+                    Ne pas modifier
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="pro" id="bulk-pro" />
+                  <Label htmlFor="bulk-pro" className="cursor-pointer font-normal">
+                    Pro
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="perso" id="bulk-perso" />
+                  <Label htmlFor="bulk-perso" className="cursor-pointer font-normal">
+                    Perso
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="unset" id="bulk-unset" />
+                  <Label htmlFor="bulk-unset" className="cursor-pointer font-normal">
+                    Non classé
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
           </div>
 
           <DialogFooter>

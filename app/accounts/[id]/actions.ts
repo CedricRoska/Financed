@@ -44,6 +44,32 @@ export async function renameAccount(formData: FormData) {
 }
 
 /**
+ * Server Action : active le mode hybride pro/perso sur un compte existant.
+ * Déclenchée quand l'utilisateur tente de classer une transaction Pro/Perso
+ * sur un compte qui n'est pas encore hybride.
+ */
+export async function activateHybrid(accountId: string): Promise<void> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { error } = await supabase
+    .from('accounts')
+    .update({ is_hybrid: true })
+    .eq('id', accountId)
+    .eq('user_id', user.id)
+
+  if (error) {
+    throw new Error(`Erreur activation hybride : ${error.message}`)
+  }
+
+  revalidatePath(`/accounts/${accountId}`)
+}
+
+/**
  * Server Action : supprime un compte bancaire et ses données associées (cascade).
  * Couvre FR8 (delete).
  */
