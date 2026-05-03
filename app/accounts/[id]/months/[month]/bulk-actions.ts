@@ -94,3 +94,117 @@ export async function bulkApplyAnnotation({
 
   return { updated: upserts.length }
 }
+
+const dateFormatter = new Intl.DateTimeFormat('fr-FR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+})
+const moneyFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+})
+
+/**
+ * Server Action : lettre N dépenses (négatives) avec UNE entrée (positive).
+ *
+ * Pour chaque dépense, marque le remboursement comme résolu en mode `wire`,
+ * en pointant explicitement vers la transaction positive (label, date, montant).
+ * Préserve la catégorie/subcategory/comment/pro_perso existants — ne touche
+ * que les champs liés au remboursement.
+ *
+ * Retourne le nombre de dépenses lettrées.
+ */
+export async function bulkLettrage({
+  expenseTxIds,
+  refundTxId,
+  accountId,
+}: {
+  expenseTxIds: string[]
+  refundTxId: string
+  accountId: string
+}): Promise<{ lettered: number }> {
+  if (expenseTxIds.length === 0) {
+    return { lettered: 0 }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: refundTx } = await supabase
+    .from('transactions')
+    .select('id, op_date, amount, raw_label')
+    .eq('id', refundTxId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!refundTx) {
+    throw new Error('Transaction de remboursement introuvable')
+  }
+  if (Number(refundTx.amount) <= 0) {
+    throw new Error('La transaction de remboursement doit être positive')
+  }
+
+  const refundDate = dateFormatter.format(new Date(refundTx.op_date))
+  const refundAmount = moneyFormatter.format(Number(refundTx.amount))
+  const refundLabel = refundTx.raw_label.trim().slice(0, 80)
+  const note = `Lettré avec ligne du ${refundDate} (${refundAmount}) — « ${refundLabel} »`
+
+  const { data: existing } = await supabase
+    .from('transaction_annotations')
+    .select(
+      'transaction_id, category, subcategory, pro_perso, comment, to_investigate',
+    )
+    .in('transaction_id', expenseTxIds)
+    .eq('user_id', user.id)
+
+  const existingByTxId = new Map(
+    (existing ?? []).map((row) => [row.transaction_id, row]),
+  )
+
+  const nowIso = new Date().toISOString()
+
+  const upserts = expenseTxIds.map((transactionId) => {
+    const prev = existingByTxId.get(transactionId)
+    return {
+      transaction_id: transactionId,
+      user_id: user.id,
+      category: prev?.category ?? null,
+      subcategory: prev?.subcategory ?? null,
+      pro_perso: prev?.pro_perso ?? null,
+      comment: prev?.comment ?? null,
+      to_investigate: prev?.to_investigate ?? false,
+      expected_refund_from: refundLabel,
+      expected_refund_label: `${refundDate} · ${refundAmount}`,
+      refund_resolved_at: nowIso,
+      refund_resolved_kind: 'wire' as const,
+      refund_resolved_note: note,
+    }
+  })
+
+  const { error } = await supabase
+    .from('transaction_annotations')
+    .upsert(upserts, { onConflict: 'transaction_id' })
+
+  if (error) {
+    throw new Error(`Erreur lettrage : ${error.message}`)
+  }
+
+  const allTxIds = [...expenseTxIds, refundTxId]
+  const { data: txDates } = await supabase
+    .from('transactions')
+    .select('op_date')
+    .in('id', allTxIds)
+    .eq('user_id', user.id)
+
+  const months = new Set((txDates ?? []).map((t) => monthSlugFromOpDate(t.op_date)))
+  for (const slug of months) {
+    revalidatePath(`/accounts/${accountId}/months/${slug}`)
+  }
+  revalidatePath(`/accounts/${accountId}`)
+
+  return { lettered: upserts.length }
+}

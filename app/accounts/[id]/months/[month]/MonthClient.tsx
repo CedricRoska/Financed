@@ -41,7 +41,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { CategoryBreakdown } from './CategoryBreakdown'
-import { bulkApplyAnnotation } from './bulk-actions'
+import { bulkApplyAnnotation, bulkLettrage } from './bulk-actions'
 import { CategoryCombobox } from '@/components/category-combobox'
 import { activateHybrid } from '@/app/accounts/[id]/actions'
 import {
@@ -146,7 +146,7 @@ export function MonthClient({
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkCategory, setBulkCategory] = useState('')
   const [bulkSubcategory, setBulkSubcategory] = useState('')
-  const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | 'keep'>('keep')
+  const [bulkProPerso, setBulkProPerso] = useState<'pro' | 'perso' | ''>('')
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const focusedRowRef = useRef<HTMLTableRowElement | null>(null)
   // Confirmation hybride : stocke les data du formulaire en attente quand l'utilisateur
@@ -166,17 +166,23 @@ export function MonthClient({
   // classification BP brute (suggestion). L'utilisateur reste libre de modifier.
   useEffect(() => {
     if (!selectedTx) return
-    const hasUserAnnotation = Boolean(
-      selectedTx.annotation?.category || selectedTx.annotation?.subcategory,
-    )
-    if (hasUserAnnotation) {
-      setCategoryDraft(selectedTx.annotation?.category ?? '')
-      setSubcategoryDraft(selectedTx.annotation?.subcategory ?? '')
+    const isFlaggedToInvestigate = selectedTx.annotation?.to_investigate ?? false
+    if (isFlaggedToInvestigate) {
+      setCategoryDraft('')
+      setSubcategoryDraft('')
     } else {
-      setCategoryDraft(selectedTx.bank_category ?? '')
-      setSubcategoryDraft(selectedTx.bank_subcategory ?? '')
+      const hasUserAnnotation = Boolean(
+        selectedTx.annotation?.category || selectedTx.annotation?.subcategory,
+      )
+      if (hasUserAnnotation) {
+        setCategoryDraft(selectedTx.annotation?.category ?? '')
+        setSubcategoryDraft(selectedTx.annotation?.subcategory ?? '')
+      } else {
+        setCategoryDraft(selectedTx.bank_category ?? '')
+        setSubcategoryDraft(selectedTx.bank_subcategory ?? '')
+      }
     }
-    setInvestigateDraft(selectedTx.annotation?.to_investigate ?? false)
+    setInvestigateDraft(isFlaggedToInvestigate)
   }, [
     selectedTx,
     selectedTx?.id,
@@ -359,7 +365,7 @@ export function MonthClient({
     const ids = Array.from(selectedIds)
     const trimmedCategory = bulkCategory.trim()
     const trimmedSubcategory = bulkSubcategory.trim()
-    const proPersoValue = bulkProPerso === 'keep' ? undefined : bulkProPerso
+    const proPersoValue = bulkProPerso === '' ? undefined : bulkProPerso
 
     startTransition(async () => {
       try {
@@ -377,7 +383,7 @@ export function MonthClient({
         setBulkOpen(false)
         setBulkCategory('')
         setBulkSubcategory('')
-        setBulkProPerso('keep')
+        setBulkProPerso('')
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Erreur bulk update')
       }
@@ -391,6 +397,45 @@ export function MonthClient({
       return
     }
     performBulkApply()
+  }
+
+  // Sélection courante côté client : permet de détecter les +/- pour le lettrage.
+  const selectedTxs = useMemo(
+    () => transactions.filter((t) => selectedIds.has(t.id)),
+    [transactions, selectedIds],
+  )
+  const selectedPositives = useMemo(
+    () => selectedTxs.filter((t) => t.amount > 0),
+    [selectedTxs],
+  )
+  const selectedNegatives = useMemo(
+    () => selectedTxs.filter((t) => t.amount < 0),
+    [selectedTxs],
+  )
+  const canLettrer =
+    selectedPositives.length === 1 && selectedNegatives.length >= 1
+
+  function handleBulkLettrage() {
+    if (!canLettrer) return
+    const refundTx = selectedPositives[0]!
+    const expenseTxIds = selectedNegatives.map((t) => t.id)
+    startTransition(async () => {
+      try {
+        const result = await bulkLettrage({
+          expenseTxIds,
+          refundTxId: refundTx.id,
+          accountId,
+        })
+        toast.success(
+          `${result.lettered} dépense${result.lettered > 1 ? 's' : ''} lettrée${result.lettered > 1 ? 's' : ''}`,
+        )
+        clearSelection()
+        setBulkOpen(false)
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Erreur lettrage')
+      }
+    })
   }
 
   function confirmHybridForBulk() {
@@ -867,7 +912,13 @@ export function MonthClient({
                   <Switch
                     id={`investigate-${selectedTx.id}`}
                     checked={investigateDraft}
-                    onCheckedChange={setInvestigateDraft}
+                    onCheckedChange={(checked) => {
+                      setInvestigateDraft(checked)
+                      if (checked) {
+                        setCategoryDraft('')
+                        setSubcategoryDraft('')
+                      }
+                    }}
                   />
                 </div>
 
@@ -908,7 +959,12 @@ export function MonthClient({
                   }}
                   onRename={handleRenameCategoryWrapper}
                   onDelete={handleDeleteCategoryWrapper}
-                  placeholder="Ex. Abonnements, Courses, Loyer…"
+                  placeholder={
+                    investigateDraft
+                      ? 'Désactive « À investiguer » pour catégoriser'
+                      : 'Ex. Abonnements, Courses, Loyer…'
+                  }
+                  disabled={investigateDraft}
                 />
 
                 <CategoryCombobox
@@ -919,13 +975,15 @@ export function MonthClient({
                   onRename={handleRenameSubWrapper}
                   onDelete={handleDeleteSubWrapper}
                   placeholder={
-                    categoryDraft
-                      ? `Ex. Claude, Spotify… (sous "${categoryDraft}")`
-                      : 'Sélectionne d\'abord une catégorie'
+                    investigateDraft
+                      ? 'Désactive « À investiguer » d\'abord'
+                      : categoryDraft
+                        ? `Ex. Claude, Spotify… (sous "${categoryDraft}")`
+                        : 'Sélectionne d\'abord une catégorie'
                   }
-                  disabled={!categoryDraft}
+                  disabled={investigateDraft || !categoryDraft}
                   hint={
-                    !categoryDraft ? (
+                    !investigateDraft && !categoryDraft ? (
                       <span className="text-xs text-muted-foreground">
                         Choisis une catégorie d&apos;abord
                       </span>
@@ -1233,6 +1291,41 @@ export function MonthClient({
             </DialogDescription>
           </DialogHeader>
 
+          {canLettrer ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-2">
+                <span className="text-base">🔗</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Lettrage automatique disponible
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Ta sélection contient 1 entrée de{' '}
+                    <span className="font-semibold">
+                      {amountFormatter.format(selectedPositives[0]!.amount)}
+                    </span>{' '}
+                    («&nbsp;{selectedPositives[0]!.raw_label}&nbsp;») et{' '}
+                    {selectedNegatives.length} dépense{selectedNegatives.length > 1 ? 's' : ''}.
+                    Veux-tu marquer{' '}
+                    {selectedNegatives.length > 1 ? 'ces dépenses' : 'cette dépense'} comme
+                    remboursée{selectedNegatives.length > 1 ? 's' : ''} par cette entrée&nbsp;?
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-3"
+                    onClick={handleBulkLettrage}
+                    disabled={isPending}
+                  >
+                    {isPending
+                      ? 'Lettrage…'
+                      : `Lettrer ${selectedNegatives.length} dépense${selectedNegatives.length > 1 ? 's' : ''}`}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-4">
             <CategoryCombobox
               label="Catégorie"
@@ -1278,17 +1371,9 @@ export function MonthClient({
               </div>
               <RadioGroup
                 value={bulkProPerso}
-                onValueChange={(v) =>
-                  setBulkProPerso(v as 'pro' | 'perso' | 'keep')
-                }
+                onValueChange={(v) => setBulkProPerso(v as 'pro' | 'perso' | '')}
                 className="flex flex-wrap gap-4"
               >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="keep" id="bulk-keep" />
-                  <Label htmlFor="bulk-keep" className="cursor-pointer font-normal">
-                    Ne pas modifier
-                  </Label>
-                </div>
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="perso" id="bulk-perso" />
                   <Label htmlFor="bulk-perso" className="cursor-pointer font-normal">
@@ -1301,6 +1386,19 @@ export function MonthClient({
                     Pro
                   </Label>
                 </div>
+                {bulkProPerso !== '' ? (
+                  <button
+                    type="button"
+                    onClick={() => setBulkProPerso('')}
+                    className="text-xs text-muted-foreground underline hover:text-foreground"
+                  >
+                    Effacer
+                  </button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Vide = ne pas modifier
+                  </span>
+                )}
               </RadioGroup>
             </div>
           </div>
@@ -1314,7 +1412,7 @@ export function MonthClient({
               onClick={handleBulkApply}
               disabled={
                 isPending ||
-                (bulkCategory.trim() === '' && bulkProPerso === 'keep')
+                (bulkCategory.trim() === '' && bulkProPerso === '')
               }
             >
               {isPending

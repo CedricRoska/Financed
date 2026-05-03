@@ -49,16 +49,18 @@ export async function saveAnnotation(formData: FormData): Promise<void> {
   const proPerso =
     proPersoRaw === 'pro' || proPersoRaw === 'perso' ? proPersoRaw : null
 
-  // Validation catégorie ≥ 2 chars (sinon null)
+  const toInvestigate = formData.get('to_investigate') === '1'
+
+  // Validation catégorie ≥ 2 chars (sinon null). Si flag "à investiguer" actif,
+  // on force category/subcategory à null : le user n'a pas encore décidé.
   const categoryRaw = emptyToNull(formData.get('category'))
-  const category = categoryRaw && categoryRaw.length >= 2 ? categoryRaw : null
+  const category =
+    toInvestigate ? null : categoryRaw && categoryRaw.length >= 2 ? categoryRaw : null
 
   const subcategoryRaw = emptyToNull(formData.get('subcategory'))
   // Sous-catégorie ne peut exister que si une catégorie est définie
   const subcategory =
     category && subcategoryRaw && subcategoryRaw.length >= 2 ? subcategoryRaw : null
-
-  const toInvestigate = formData.get('to_investigate') === '1'
 
   const { error } = await supabase.from('transaction_annotations').upsert(
     {
