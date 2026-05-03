@@ -4,7 +4,12 @@ import { formatMonthLabelFR, parseMonthSlug } from '@/lib/months/format'
 import { createClient } from '@/lib/supabase/server'
 import { isTransactionToProcess } from '@/lib/transactions/validation'
 import { getUserCategories } from '@/app/settings/categories-actions'
-import { MonthClient, type AnnotationLite, type EnrichedTransaction } from './MonthClient'
+import {
+  MonthClient,
+  type AnnotationLite,
+  type EnrichedTransaction,
+  type PendingRefund,
+} from './MonthClient'
 
 function pickAnnotation(raw: unknown): AnnotationLite | null {
   if (!raw) return null
@@ -69,6 +74,37 @@ export default async function MonthDetailPage({
 
   const userCategories = await getUserCategories()
 
+  // Toutes les dépenses du compte avec un remboursement attendu non résolu,
+  // tous mois confondus. Permet le lettrage cross-mois depuis la Sheet d'une
+  // ligne `+`. Liste bornée (uniquement non résolues), donc cheap à charger.
+  const { data: pendingRefundsRaw } = await supabase
+    .from('transactions')
+    .select(
+      'id, op_date, amount, raw_label, transaction_annotations!inner(expected_refund_from, expected_refund_label, refund_resolved_at)',
+    )
+    .eq('account_id', accountId)
+    .not('transaction_annotations.expected_refund_from', 'is', null)
+    .is('transaction_annotations.refund_resolved_at', null)
+    .order('op_date', { ascending: false })
+
+  const pendingRefunds: PendingRefund[] = (pendingRefundsRaw ?? [])
+    .map((t) => {
+      const annotation = pickAnnotation(t.transaction_annotations) as
+        | { expected_refund_from: string | null; expected_refund_label: string | null }
+        | null
+      const debtor = annotation?.expected_refund_from?.trim() ?? ''
+      if (debtor === '') return null
+      return {
+        id: t.id,
+        op_date: t.op_date,
+        amount: Number(t.amount),
+        raw_label: t.raw_label,
+        expected_refund_from: debtor,
+        expected_refund_label: annotation?.expected_refund_label ?? null,
+      }
+    })
+    .filter((x): x is PendingRefund => x !== null)
+
   return (
     <AuthenticatedShell>
       <MonthClient
@@ -78,6 +114,7 @@ export default async function MonthDetailPage({
         monthLabel={formatMonthLabelFR(monthSlug)}
         transactions={enriched}
         userCategories={userCategories}
+        pendingRefunds={pendingRefunds}
       />
     </AuthenticatedShell>
   )

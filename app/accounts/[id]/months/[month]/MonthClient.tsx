@@ -41,7 +41,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { CategoryBreakdown } from './CategoryBreakdown'
-import { bulkApplyAnnotation, bulkLettrage } from './bulk-actions'
+import {
+  bulkApplyAnnotation,
+  bulkLettrage,
+  bulkResolveExpectedRefunds,
+} from './bulk-actions'
 import { CategoryCombobox } from '@/components/category-combobox'
 import { activateHybrid } from '@/app/accounts/[id]/actions'
 import {
@@ -113,6 +117,15 @@ export type EnrichedTransaction = {
   toProcess: boolean
 }
 
+export type PendingRefund = {
+  id: string
+  op_date: string
+  amount: number
+  raw_label: string
+  expected_refund_from: string
+  expected_refund_label: string | null
+}
+
 type StatusFilter = 'all' | 'toProcess' | 'investigate' | 'validated'
 
 export type UserCategoryWithSubs = {
@@ -128,6 +141,7 @@ export function MonthClient({
   monthLabel,
   transactions,
   userCategories,
+  pendingRefunds,
 }: {
   accountId: string
   accountName: string
@@ -135,6 +149,7 @@ export function MonthClient({
   monthLabel: string
   transactions: EnrichedTransaction[]
   userCategories: UserCategoryWithSubs[]
+  pendingRefunds: PendingRefund[]
 }) {
   const router = useRouter()
   const [selectedTx, setSelectedTx] = useState<EnrichedTransaction | null>(null)
@@ -160,6 +175,11 @@ export function MonthClient({
   const [categoryDraft, setCategoryDraft] = useState<string>('')
   const [subcategoryDraft, setSubcategoryDraft] = useState<string>('')
   const [investigateDraft, setInvestigateDraft] = useState<boolean>(false)
+
+  // Lettrage cross-mois : sélection des dépenses en attente à lettrer avec une ligne `+`
+  const [lettrageDialogOpen, setLettrageDialogOpen] = useState(false)
+  const [pendingSelection, setPendingSelection] = useState<Set<string>>(new Set())
+  const [pendingSearch, setPendingSearch] = useState('')
 
   // Reset les drafts quand on ouvre une autre transaction.
   // Si la transaction n'est pas encore annotée, on pré-remplit avec la
@@ -414,6 +434,86 @@ export function MonthClient({
   )
   const canLettrer =
     selectedPositives.length === 1 && selectedNegatives.length >= 1
+
+  // Filtrage des pending refunds par texte (libellé / debtor / label)
+  const filteredPendingRefunds = useMemo(() => {
+    const q = pendingSearch.trim().toLowerCase()
+    if (q === '') return pendingRefunds
+    return pendingRefunds.filter(
+      (p) =>
+        p.expected_refund_from.toLowerCase().includes(q) ||
+        p.raw_label.toLowerCase().includes(q) ||
+        (p.expected_refund_label?.toLowerCase().includes(q) ?? false),
+    )
+  }, [pendingRefunds, pendingSearch])
+
+  // Groupement par debtor pour l'affichage du Dialog
+  const pendingByDebtor = useMemo(() => {
+    const groups = new Map<string, PendingRefund[]>()
+    for (const p of filteredPendingRefunds) {
+      const list = groups.get(p.expected_refund_from) ?? []
+      list.push(p)
+      groups.set(p.expected_refund_from, list)
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [filteredPendingRefunds])
+
+  const pendingSelectionTotal = useMemo(() => {
+    let sum = 0
+    for (const p of pendingRefunds) {
+      if (pendingSelection.has(p.id)) sum += p.amount
+    }
+    return sum
+  }, [pendingRefunds, pendingSelection])
+
+  function handleResolvePending() {
+    if (!selectedTx || pendingSelection.size === 0) return
+    const expenseTxIds = Array.from(pendingSelection)
+    startTransition(async () => {
+      try {
+        const result = await bulkResolveExpectedRefunds({
+          expenseTxIds,
+          refundTxId: selectedTx.id,
+          accountId,
+        })
+        toast.success(
+          `${result.resolved} dépense${result.resolved > 1 ? 's' : ''} lettrée${result.resolved > 1 ? 's' : ''}`,
+        )
+        setLettrageDialogOpen(false)
+        setPendingSelection(new Set())
+        setPendingSearch('')
+        setSelectedTx(null)
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Erreur lettrage')
+      }
+    })
+  }
+
+  function togglePending(id: string) {
+    setPendingSelection((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllInGroup(debtor: string) {
+    const ids = pendingRefunds
+      .filter((p) => p.expected_refund_from === debtor)
+      .map((p) => p.id)
+    setPendingSelection((prev) => {
+      const next = new Set(prev)
+      const allSelected = ids.every((id) => next.has(id))
+      if (allSelected) {
+        for (const id of ids) next.delete(id)
+      } else {
+        for (const id of ids) next.add(id)
+      }
+      return next
+    })
+  }
 
   function handleBulkLettrage() {
     if (!canLettrer) return
@@ -1122,6 +1222,45 @@ export function MonthClient({
                 </SheetFooter>
               </form>
 
+              {/* Lettrage cross-mois : visible uniquement sur les lignes `+` quand
+                  il y a des dépenses en attente de remboursement sur le compte. */}
+              {selectedTx.amount > 0 && pendingRefunds.length > 0 ? (
+                <>
+                  <Separator />
+                  <div className="px-4 py-4">
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                      <div className="flex items-start gap-2">
+                        <span className="text-base">🔗</span>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-blue-900">
+                            Lettrer cette entrée avec des dépenses en attente
+                          </p>
+                          <p className="mt-1 text-xs text-blue-800">
+                            {pendingRefunds.length} dépense
+                            {pendingRefunds.length > 1 ? 's' : ''} taggée
+                            {pendingRefunds.length > 1 ? 's' : ''} «&nbsp;à rembourser&nbsp;»
+                            sur ce compte (tous mois confondus).
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="mt-3"
+                            onClick={() => {
+                              setPendingSelection(new Set())
+                              setPendingSearch('')
+                              setLettrageDialogOpen(true)
+                            }}
+                            disabled={isPending}
+                          >
+                            Choisir les dépenses à lettrer
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
               {/* Section résolution remboursement */}
               {hasUnresolvedRefund || hasResolvedRefund ? (
                 <>
@@ -1289,6 +1428,164 @@ export function MonthClient({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Cross-month lettrage dialog (depuis la Sheet d'une ligne `+`) */}
+      <Dialog
+        open={lettrageDialogOpen}
+        onOpenChange={(o) => {
+          setLettrageDialogOpen(o)
+          if (!o) {
+            setPendingSelection(new Set())
+            setPendingSearch('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Lettrer des dépenses en attente</DialogTitle>
+            <DialogDescription>
+              Sélectionne les dépenses que cette entrée rembourse. Les
+              <span className="font-medium"> tags «&nbsp;à rembourser&nbsp;»</span> sont
+              préservés ; seul le statut «&nbsp;résolu&nbsp;» change.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedTx ? (
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Entrée :{' '}
+              <span className="font-mono text-foreground">
+                {dateFormatter.format(new Date(selectedTx.op_date))} ·{' '}
+                {selectedTx.raw_label}
+              </span>{' '}
+              ·{' '}
+              <span className="font-semibold text-emerald-700">
+                {amountFormatter.format(selectedTx.amount)}
+              </span>
+            </div>
+          ) : null}
+
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Rechercher par debiteur, libellé, label…"
+              value={pendingSearch}
+              onChange={(e) => setPendingSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
+            {pendingByDebtor.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">
+                Aucune dépense en attente ne correspond à ta recherche.
+              </div>
+            ) : (
+              pendingByDebtor.map(([debtor, items]) => {
+                const groupTotal = items.reduce((s, p) => s + p.amount, 0)
+                const allChecked = items.every((p) => pendingSelection.has(p.id))
+                return (
+                  <div key={debtor} className="border-b last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => selectAllInGroup(debtor)}
+                      className="flex w-full items-center justify-between bg-muted/40 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted/60"
+                    >
+                      <span>
+                        {debtor}{' '}
+                        <span className="font-normal normal-case text-muted-foreground/70">
+                          · {items.length} dépense{items.length > 1 ? 's' : ''} ·{' '}
+                          {amountFormatter.format(groupTotal)}
+                        </span>
+                      </span>
+                      <span className="text-xs font-normal normal-case text-foreground underline">
+                        {allChecked ? 'Tout désélectionner' : 'Tout sélectionner'}
+                      </span>
+                    </button>
+                    <ul>
+                      {items.map((p) => {
+                        const checked = pendingSelection.has(p.id)
+                        return (
+                          <li
+                            key={p.id}
+                            onClick={() => togglePending(p.id)}
+                            className={cn(
+                              'flex cursor-pointer items-center gap-3 px-3 py-2 text-sm transition hover:bg-muted/30',
+                              checked && 'bg-primary/5',
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => togglePending(p.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="size-4 rounded border-input accent-foreground"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="truncate font-medium">{p.raw_label}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {dateFormatter.format(new Date(p.op_date))}
+                                {p.expected_refund_label
+                                  ? ` · ${p.expected_refund_label}`
+                                  : ''}
+                              </div>
+                            </div>
+                            <div className="font-mono tabular-nums text-red-700">
+                              {amountFormatter.format(p.amount)}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {selectedTx && pendingSelection.size > 0 ? (
+            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+              <div>
+                <span className="font-semibold">{pendingSelection.size}</span>{' '}
+                dépense{pendingSelection.size > 1 ? 's' : ''} sélectionnée
+                {pendingSelection.size > 1 ? 's' : ''} ·{' '}
+                <span className="font-mono text-red-700">
+                  {amountFormatter.format(pendingSelectionTotal)}
+                </span>
+              </div>
+              <div className="text-muted-foreground">
+                vs entrée{' '}
+                <span className="font-mono text-emerald-700">
+                  {amountFormatter.format(selectedTx.amount)}
+                </span>{' '}
+                · diff{' '}
+                <span className="font-mono">
+                  {amountFormatter.format(selectedTx.amount + pendingSelectionTotal)}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLettrageDialogOpen(false)}
+            >
+              Annuler
+            </Button>
+            <Button
+              type="button"
+              onClick={handleResolvePending}
+              disabled={isPending || pendingSelection.size === 0}
+            >
+              {isPending
+                ? 'Lettrage…'
+                : `Lettrer ${pendingSelection.size} dépense${pendingSelection.size > 1 ? 's' : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk apply dialog */}
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>

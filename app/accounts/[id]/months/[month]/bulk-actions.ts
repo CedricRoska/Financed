@@ -248,3 +248,82 @@ export async function bulkLettrage({
 
   return { lettered: expenseTxIds.length }
 }
+
+/**
+ * Server Action : résout en masse des dépenses pré-taggées avec un
+ * `expected_refund_from`, en utilisant une transaction `+` comme source du
+ * remboursement. Permet le lettrage cross-mois (notes de frais qui s'étalent
+ * sur janvier/février/mars puis remboursement en avril).
+ *
+ * Préserve `expected_refund_from` / `expected_refund_label` (le tag user n'est
+ * pas écrasé). Set seulement `refund_resolved_at`, `refund_resolved_kind=wire`
+ * et `refund_resolved_note` pointant vers la ligne `+`.
+ */
+export async function bulkResolveExpectedRefunds({
+  expenseTxIds,
+  refundTxId,
+  accountId,
+}: {
+  expenseTxIds: string[]
+  refundTxId: string
+  accountId: string
+}): Promise<{ resolved: number }> {
+  if (expenseTxIds.length === 0) {
+    return { resolved: 0 }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: refundTx } = await supabase
+    .from('transactions')
+    .select('id, op_date, amount, raw_label')
+    .eq('id', refundTxId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!refundTx) {
+    throw new Error('Transaction de remboursement introuvable')
+  }
+  if (Number(refundTx.amount) <= 0) {
+    throw new Error('La transaction de remboursement doit être positive')
+  }
+
+  const refundDate = dateFormatter.format(new Date(refundTx.op_date))
+  const refundAmount = moneyFormatter.format(Number(refundTx.amount))
+  const refundLabel = refundTx.raw_label.trim().slice(0, 80)
+  const note = `Lettré avec ligne du ${refundDate} (${refundAmount}) — « ${refundLabel} »`
+  const nowIso = new Date().toISOString()
+
+  const { error } = await supabase
+    .from('transaction_annotations')
+    .update({
+      refund_resolved_at: nowIso,
+      refund_resolved_kind: 'wire' as const,
+      refund_resolved_note: note,
+    })
+    .in('transaction_id', expenseTxIds)
+    .eq('user_id', user.id)
+
+  if (error) {
+    throw new Error(`Erreur lettrage : ${error.message}`)
+  }
+
+  const allTxIds = [...expenseTxIds, refundTxId]
+  const { data: txDates } = await supabase
+    .from('transactions')
+    .select('op_date')
+    .in('id', allTxIds)
+    .eq('user_id', user.id)
+
+  const months = new Set((txDates ?? []).map((t) => monthSlugFromOpDate(t.op_date)))
+  for (const slug of months) {
+    revalidatePath(`/accounts/${accountId}/months/${slug}`)
+  }
+  revalidatePath(`/accounts/${accountId}`)
+
+  return { resolved: expenseTxIds.length }
+}
