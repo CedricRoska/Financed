@@ -34,7 +34,7 @@ describe('isTransactionValidated', () => {
     ).toBe(true)
   })
 
-  it('returns false with category but pending refund (not resolved)', () => {
+  it('returns true with category and pending refund (waiting passively counts as done)', () => {
     expect(
       isTransactionValidated({
         ...baseAnnotation,
@@ -42,7 +42,7 @@ describe('isTransactionValidated', () => {
         expected_refund_from: 'Paul',
         refund_resolved_at: null,
       }),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('returns true with category and resolved refund', () => {
@@ -106,11 +106,20 @@ describe('isTransactionToProcess', () => {
     expect(
       isTransactionToProcess({ ...baseAnnotation, category: 'Courses' }),
     ).toBe(false)
+    // Pending refund + category = validated (no longer "à traiter")
     expect(
       isTransactionToProcess({
         ...baseAnnotation,
         category: 'Vacances',
         expected_refund_from: 'Paul',
+      }),
+    ).toBe(false)
+    // Investigate flag wins
+    expect(
+      isTransactionToProcess({
+        ...baseAnnotation,
+        category: 'Courses',
+        to_investigate: true,
       }),
     ).toBe(true)
   })
